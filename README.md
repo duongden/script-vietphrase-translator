@@ -8,7 +8,6 @@ Userscript dịch trực tiếp tiếng Trung sang tiếng Việt trên mọi tr
 
 - Dịch realtime toàn bộ nội dung Hán văn trên trang khi tải xong
 - Hỗ trợ từ điển: Vietphrase, PhiênÂm (âm Hán-Việt), tên riêng (Names)
-- Từ điển tải về và lưu vào IndexedDB — chỉ tải lần đầu, sau đó dùng cache
 - Panel nổi (floating panel) với các nút: Dịch, Làm mới, Bật/Tắt
 - Hỗ trợ MutationObserver để dịch nội dung ajax/lazy-load tự động
 - Tooltip hiện bản gốc khi rê chuột lên đoạn đã dịch
@@ -29,14 +28,8 @@ Userscript dịch trực tiếp tiếng Trung sang tiếng Việt trên mọi tr
 
 ### Bước 2 — Cài userscript
 
-1. Mở file [`vietphrase.user.js`](vietphrase.user.js) trong repo này
-2. Click nút **Raw**
-3. Tampermonkey sẽ tự nhận diện và hiện hộp thoại xác nhận cài đặt — click **Install**
-
-Hoặc vào Tampermonkey Dashboard → **Utilities** → dán URL raw vào ô "Install from URL":
-
 ```
-https://raw.githubusercontent.com/duongden/script-vietphrase-translator/main/vietphrase.user.js
+[https://greasyfork.org/en/scripts/571806-vietphrase-realtime-translator-lite](https://greasyfork.org/en/scripts/571806-vietphrase-realtime-translator-lite)
 ```
 
 ---
