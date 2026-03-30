@@ -1,12 +1,13 @@
 // ==UserScript==
 // @name         Vietphrase Realtime Translator Lite
-// @name:vi      Vietphrase - Dịch Hán Việt Realtime Lite
-// @namespace    https://github.com/duongden/duongden-vietphrase-translator
-// @version      2.1.0
+// @namespace    https://github.com/duongden/script-vietphrase-translator
+// @version      2.1.1
 // @description  Dịch trực tiếp văn bản Hán ngữ sang tiếng Việt trên mọi trang web bằng từ điển Vietphrase tải từ link GitHub raw.
-// @description:en Realtime Chinese-to-Vietnamese translation on any webpage using Vietphrase dictionaries loaded from GitHub raw URLs.
 // @author       duongden
 // @license      GPL-3.0
+// @icon         https://raw.githubusercontent.com/duongden/script-vietphrase-translator/main/icon.png
+// @homepageURL  https://github.com/duongden/script-vietphrase-translator
+// @supportURL   https://github.com/duongden/script-vietphrase-translator/issues
 // @match        *://*/*
 // @grant        GM_getValue
 // @grant        GM_setValue
@@ -75,7 +76,7 @@
     try {
       const v = GM_getValue(key);
       return v !== undefined && v !== null ? v : def;
-    } catch (_) {
+    } catch (e) {
       return def;
     }
   }
@@ -83,7 +84,7 @@
   function gmSet(key, val) {
     try {
       GM_setValue(key, val);
-    } catch (_) {}
+    } catch (e) { /* silent */ }
   }
 
   function gmFetch(url) {
@@ -177,7 +178,7 @@
   }
 
   async function ensureBaseDicts(all) {
-    const merged = { ...(all || {}) };
+    const merged = Object.assign({}, (all || {}));
     const missing = ['PA', 'VP', 'Names'].filter(k => !merged[k] || !Object.keys(merged[k]).length);
     if (!missing.length) return merged;
 
@@ -669,7 +670,7 @@
   }
 
   function onNodeMouseMove(e) {
-    if (_tooltip?.style.display !== 'none') positionTip(e);
+    if (_tooltip && _tooltip.style.display !== 'none') positionTip(e);
   }
 
   function onNodeMouseLeave() {
@@ -872,6 +873,11 @@
     }
   }
 
+  // Monkey-patch XMLHttpRequest.send and window.fetch to trigger
+  // re-translation after any AJAX response. This is intentional:
+  // many novel/reading sites load chapter content dynamically via
+  // XHR or fetch, so we need to detect and translate new Chinese
+  // text that appears after these requests complete.
   function attachAjaxInterceptor() {
     if (_ajaxAttached || !settings.enableajax) return;
     _ajaxAttached = true;
@@ -892,29 +898,56 @@
     };
   }
 
-  function mdIcon(name) {
-    const paths = {
-      play: '<path d="M8 5v14l11-7z"/>',
-      refresh: '<path d="M17.65 6.35A7.95 7.95 0 0 0 12 4V1L7 6l5 5V7a5 5 0 1 1-5 5H5a7 7 0 1 0 12.65-5.65"/>',
-      progress: '<path d="M12 2a10 10 0 1 0 10 10h-2a8 8 0 1 1-8-8z"/>',
-      done: '<path d="M9 16.17 4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>',
-      toggleOn: '<path d="M7 7h10a5 5 0 0 1 0 10H7A5 5 0 0 1 7 7m10 8a3 3 0 0 0 0-6H7a3 3 0 0 0 0 6zm0-1.5A2.5 2.5 0 1 0 17 8.5a2.5 2.5 0 0 0 0 5"/>',
-      toggleOff: '<path d="M7 7h10a5 5 0 0 1 0 10H7A5 5 0 0 1 7 7m0 2a3 3 0 0 0 0 6h10a3 3 0 0 0 0-6zm0 4.5A2.5 2.5 0 1 1 7 8.5a2.5 2.5 0 0 1 0 5"/>',
-    };
-    return `<svg class="mi" viewBox="0 0 24 24" aria-hidden="true">${paths[name] || ''}</svg>`;
+  const SVG_NS = 'http://www.w3.org/2000/svg';
+  const ICON_PATHS = {
+    play: 'M8 5v14l11-7z',
+    refresh: 'M17.65 6.35A7.95 7.95 0 0 0 12 4V1L7 6l5 5V7a5 5 0 1 1-5 5H5a7 7 0 1 0 12.65-5.65',
+    progress: 'M12 2a10 10 0 1 0 10 10h-2a8 8 0 1 1-8-8z',
+    done: 'M9 16.17 4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z',
+    toggleOn: 'M7 7h10a5 5 0 0 1 0 10H7A5 5 0 0 1 7 7m10 8a3 3 0 0 0 0-6H7a3 3 0 0 0 0 6zm0-1.5A2.5 2.5 0 1 0 17 8.5a2.5 2.5 0 0 0 0 5',
+    toggleOff: 'M7 7h10a5 5 0 0 1 0 10H7A5 5 0 0 1 7 7m0 2a3 3 0 0 0 0 6h10a3 3 0 0 0 0-6zm0 4.5A2.5 2.5 0 1 1 7 8.5a2.5 2.5 0 0 1 0 5',
+    hide: 'M19 13H5v-2h14z',
+    show: 'M4 6h16v2H4zm0 5h16v2H4zm0 5h16v2H4z',
+  };
+
+  function createSvgIcon(name) {
+    const svg = document.createElementNS(SVG_NS, 'svg');
+    svg.setAttribute('class', 'mi');
+    svg.setAttribute('viewBox', '0 0 24 24');
+    svg.setAttribute('aria-hidden', 'true');
+    const pathData = ICON_PATHS[name] || '';
+    if (pathData) {
+      const path = document.createElementNS(SVG_NS, 'path');
+      path.setAttribute('d', pathData);
+      svg.appendChild(path);
+    }
+    return svg;
   }
 
-  function mkBtn(icon, label, cls, title) {
+  function setIconContent(container, iconName) {
+    while (container.firstChild) container.removeChild(container.firstChild);
+    container.appendChild(createSvgIcon(iconName));
+  }
+
+  function mkBtn(iconName, label, cls, title) {
     const btn = document.createElement('button');
     btn.className = 'vp-fpanel-btn' + (cls ? ' ' + cls : '');
     btn.title = title || label;
-    btn.innerHTML = `<span class="fp-icon">${icon}</span><span class="fp-label">${label}</span>`;
+    const iconSpan = document.createElement('span');
+    iconSpan.className = 'fp-icon';
+    iconSpan.appendChild(createSvgIcon(iconName));
+    const labelSpan = document.createElement('span');
+    labelSpan.className = 'fp-label';
+    labelSpan.textContent = label;
+    btn.appendChild(iconSpan);
+    btn.appendChild(labelSpan);
     return btn;
   }
 
   function buildFloatPanel() {
     if (!settings.showTransBtn) {
-      document.getElementById('_vp_float_panel')?.remove();
+      const existingPanel = document.getElementById('_vp_float_panel');
+      if (existingPanel) existingPanel.remove();
       _floatPanel = null;
       return;
     }
@@ -927,40 +960,41 @@
       document.body.appendChild(_floatPanel);
     }
 
-    _floatPanel.innerHTML = '';
+    while (_floatPanel.firstChild) _floatPanel.removeChild(_floatPanel.firstChild);
 
-    const btnTrans = mkBtn(mdIcon('play'), 'Dịch VP', '', 'Dịch trang ngay');
+    const btnTrans = mkBtn('play', 'Dịch VP', '', 'Dịch trang ngay');
     let transBusy = false;
     btnTrans.onclick = async () => {
       if (transBusy) return;
       transBusy = true;
-      btnTrans.querySelector('.fp-icon').innerHTML = mdIcon('progress');
+      setIconContent(btnTrans.querySelector('.fp-icon'), 'progress');
       await realtimeTranslate(true);
-      btnTrans.querySelector('.fp-icon').innerHTML = mdIcon('done');
+      setIconContent(btnTrans.querySelector('.fp-icon'), 'done');
       setTimeout(() => {
         transBusy = false;
-        btnTrans.querySelector('.fp-icon').innerHTML = mdIcon('play');
+        setIconContent(btnTrans.querySelector('.fp-icon'), 'play');
       }, 1500);
     };
     _floatPanel.appendChild(btnTrans);
 
-    const btnReload = mkBtn(mdIcon('refresh'), 'Làm mới', 'green', 'Làm mới bản dịch');
+    const btnReload = mkBtn('refresh', 'Làm mới', 'green', 'Làm mới bản dịch');
     btnReload.onclick = () => {
-      btnReload.querySelector('.fp-icon').innerHTML = mdIcon('progress');
+      setIconContent(btnReload.querySelector('.fp-icon'), 'progress');
       restoreAndRetranslate();
       setTimeout(() => {
-        btnReload.querySelector('.fp-icon').innerHTML = mdIcon('refresh');
+        setIconContent(btnReload.querySelector('.fp-icon'), 'refresh');
       }, 1200);
     };
     _floatPanel.appendChild(btnReload);
 
     if (_isTouchDevice) {
-      const hideIcon = `<svg class="mi" viewBox="0 0 24 24" aria-hidden="true"><path d="M19 13H5v-2h14z"/></svg>`;
-      const showIcon = `<svg class="mi" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 6h16v2H4zm0 5h16v2H4zm0 5h16v2H4z"/></svg>`;
       const btnCollapse = document.createElement('button');
       btnCollapse.className = 'vp-fpanel-btn vp-panel-toggle' + (_panelCollapsed ? '' : ' vp-expanded');
       btnCollapse.title = _panelCollapsed ? 'Hiện các nút' : 'Ẩn các nút';
-      btnCollapse.innerHTML = `<span class="fp-icon">${_panelCollapsed ? showIcon : hideIcon}</span>`;
+      const collapseIconSpan = document.createElement('span');
+      collapseIconSpan.className = 'fp-icon';
+      collapseIconSpan.appendChild(createSvgIcon(_panelCollapsed ? 'show' : 'hide'));
+      btnCollapse.appendChild(collapseIconSpan);
       btnCollapse.onclick = () => {
         _panelCollapsed = !_panelCollapsed;
         gmSet('vp_lite_panel_collapsed', _panelCollapsed);
@@ -968,12 +1002,12 @@
           _floatPanel.classList.add('vp-collapsed');
           btnCollapse.classList.remove('vp-expanded');
           btnCollapse.title = 'Hiện các nút';
-          btnCollapse.querySelector('.fp-icon').innerHTML = showIcon;
+          setIconContent(collapseIconSpan, 'show');
         } else {
           _floatPanel.classList.remove('vp-collapsed');
           btnCollapse.classList.add('vp-expanded');
           btnCollapse.title = 'Ẩn các nút';
-          btnCollapse.querySelector('.fp-icon').innerHTML = hideIcon;
+          setIconContent(collapseIconSpan, 'hide');
         }
       };
       _floatPanel.appendChild(btnCollapse);
@@ -983,14 +1017,14 @@
 
     const isOn = settings.enable;
     const btnToggle = mkBtn(
-      isOn ? mdIcon('toggleOn') : mdIcon('toggleOff'),
+      isOn ? 'toggleOn' : 'toggleOff',
       isOn ? 'Auto ON' : 'Auto OFF',
       isOn ? 'green' : 'off',
       isOn ? 'Tắt dịch tự động' : 'Bật dịch tự động'
     );
     btnToggle.onclick = () => {
       settings.enable = !settings.enable;
-      gmSet('vp_lite_options', { ...settings });
+      gmSet('vp_lite_options', Object.assign({}, settings));
       buildFloatPanel();
       if (settings.enable) realtimeTranslate(true);
     };
@@ -1010,7 +1044,7 @@
   });
   GM_registerMenuCommand('⏯ Bật/Tắt auto translate', () => {
     settings.enable = !settings.enable;
-    gmSet('vp_lite_options', { ...settings });
+    gmSet('vp_lite_options', Object.assign({}, settings));
     buildFloatPanel();
     if (settings.enable) realtimeTranslate(true);
   });
@@ -1019,8 +1053,8 @@
     const stored = gmGet('vp_lite_options', null);
     if (stored && typeof stored === 'object') Object.assign(settings, stored);
     if (_isTouchDevice) _panelCollapsed = !!gmGet('vp_lite_panel_collapsed', false);
-    deferDelay = settings.delayMutation ?? 200;
-    translateDelay = settings.delayTrans ?? 120;
+    deferDelay = settings.delayMutation !== undefined && settings.delayMutation !== null ? settings.delayMutation : 200;
+    translateDelay = settings.delayTrans !== undefined && settings.delayTrans !== null ? settings.delayTrans : 120;
 
     try {
       await loadDicts();
