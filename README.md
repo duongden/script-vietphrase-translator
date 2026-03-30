@@ -1,6 +1,6 @@
 # Vietphrase Realtime Translator Lite
 
-Userscript dịch trực tiếp văn bản Hán ngữ (chữ Trung) sang tiếng Việt trên mọi trang web, sử dụng từ điển Vietphrase.
+Userscript dịch trực tiếp tiếng Trung sang tiếng Việt trên mọi trang web, sử dụng từ điển Vietphrase.
 
 ---
 
