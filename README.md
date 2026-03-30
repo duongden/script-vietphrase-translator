@@ -79,17 +79,6 @@ Ba file từ điển trong repo này được script tải tự động lần đ
 
 ---
 
-## Yêu cầu quyền
-
-| Quyền | Lý do |
-|---|---|
-| `GM_getValue` / `GM_setValue` | Lưu cài đặt người dùng |
-| `GM_xmlhttpRequest` | Tải từ điển từ `raw.githubusercontent.com` |
-| `GM_registerMenuCommand` | Thêm lệnh vào menu Tampermonkey |
-| `@connect raw.githubusercontent.com` | Cho phép kết nối tải từ điển |
-
----
-
 ## License
 
 [GPL-3.0](LICENSE)
