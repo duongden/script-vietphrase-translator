@@ -29,7 +29,7 @@ Userscript dịch trực tiếp tiếng Trung sang tiếng Việt trên mọi tr
 ### Bước 2 — Cài userscript
 
 ```
-[https://greasyfork.org/en/scripts/571806-vietphrase-realtime-translator-lite](https://greasyfork.org/en/scripts/571806-vietphrase-realtime-translator-lite)
+https://greasyfork.org/en/scripts/571806-vietphrase-realtime-translator-lite
 ```
 
 ---
