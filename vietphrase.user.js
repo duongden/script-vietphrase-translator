@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Vietphrase Realtime Translator Lite
 // @namespace    https://github.com/duongden/script-vietphrase-translator
-// @version      2.1.1
+// @version      2.1.4
 // @description  Dịch trực tiếp văn bản Hán ngữ sang tiếng Việt trên mọi trang web bằng từ điển Vietphrase tải từ link GitHub raw.
 // @author       duongden
 // @license      GPL-3.0
@@ -24,8 +24,7 @@
   const DB_NAME = 'VietphraseDBLite';
   const DB_VER = 1;
   const STORE = 'dicts';
-  const HAN_CHAR_RE = /[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\u3007]/;
-  const CHINESE_RE = /[\u3400-\u9FFF]/;
+  const CHINESE_RE = /[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\u3007]/;
   const DICH_LIEU_SET = new Set(['的', '了', '着', '著']);
   const DEFAULT_DICT_URLS = {
     PA: 'https://raw.githubusercontent.com/duongden/script-vietphrase-translator/refs/heads/main/ChinesePhienAmWords.txt',
@@ -161,7 +160,7 @@
       if (!k || !v) continue;
       if (mode === 'PA') {
         const chars = [...k];
-        if (!chars.every(ch => HAN_CHAR_RE.test(ch)) || chars.length !== 1) continue;
+        if (!chars.every(ch => CHINESE_RE.test(ch)) || chars.length !== 1) continue;
       }
       out[k] = v;
     }
@@ -204,30 +203,13 @@
     console.log(`[VP Lite] PA=${Object.keys(dictPA).length} VP=${dictVPKeys.length} Names=${dictNamesKeys.length}`);
   }
 
-  async function reloadDictsFromSource() {
-    const fetched = await Promise.all(
-      ['PA', 'VP', 'Names'].map(async key => {
-        const parsed = await fetchDefaultDict(key);
-        await dbSet(key, parsed);
-        return [key, parsed];
-      })
-    );
-    const merged = {};
-    for (const [key, parsed] of fetched) merged[key] = parsed;
-    dictPA = merged.PA || {};
-    dictVP = merged.VP || {};
-    dictNames = merged.Names || {};
-    dictVPKeys = sortByLenDesc(dictVP);
-    dictNamesKeys = sortByLenDesc(dictNames);
-    isLoaded = true;
-  }
 
   function hasHanChar(text) {
-    return HAN_CHAR_RE.test(String(text || ''));
+    return CHINESE_RE.test(String(text || ''));
   }
 
   function isHanChar(ch) {
-    return HAN_CHAR_RE.test(ch);
+    return CHINESE_RE.test(ch);
   }
 
   function takeNonHanRun(text, start) {
@@ -320,8 +302,9 @@
     if (!s || !s.trim()) return s;
     const trimmed = s.trimStart();
     if (trimmed) s = trimmed[0].toUpperCase() + trimmed.slice(1);
-    s = s.replace(/([.!?])\s+([a-zàáâãèéêìíòóôõùúýăđơưạảấầẩẫậắằẳẵặẹẻẽếềểễệỉịọỏốồổỗộớờởỡợụủứừửữựỳỷỹ])/g,
-      (_, p, c) => p + ' ' + c.toUpperCase());
+    // Viết hoa sau dấu kết câu: ". ", "! ", "? " (hỗ trợ cả khi thiếu space)
+    s = s.replace(/([.!?])(\s*)([a-zàáâãèéêìíòóôõùúýăđơưạảấầẩẫậắằẳẵặẹẻẽếềểễệỉịọỏốồổỗộớờởỡợụủứừửữựỳỷỹ])/g,
+      (_, p, sp, c) => p + sp + c.toUpperCase());
     s = s.replace(/(:\s+\x02)([a-zàáâãèéêìíòóôõùúýăđơưạảấầẩẫậắằẳẵặẹẻẽếềểễệỉịọỏốồổỗộớờởỡợụủứừửữựỳỷỹ])/g,
       (_, pre, c) => pre + c.toUpperCase());
     s = s.replace(/((?:^|\s)\x02)([a-zàáâãèéêìíòóôõùúýăđơưạảấầẩẫậắằẳẵặẹẻẽếềểễệỉịọỏốồổỗộớờởỡợụủứừửữựỳỷỹ])/g,
@@ -413,81 +396,72 @@
     style.id = '_vp_theme_style';
     style.textContent = `
       ._vp_ui {
-        color-scheme: light;
-        --vp-bg:#ffffff; --vp-bg2:#f8f8f8;
-        --vp-text:#1f1f1f; --vp-text2:#3c3c3c;
-        --vp-muted:#767676; --vp-border:#e5e5e5;
-        --vp-blue:#005fb8; --vp-blue-lt:#e8f2ff; --vp-blue-bd:#bfdcff;
-        --vp-green:#137333; --vp-green-bd:#cfe8d1;
-        --vp-tip-bg:rgba(32,32,32,0.96); --vp-tip-text:#f3f4f6;
+        color-scheme: light dark;
+        --vp-bg: rgba(255, 255, 255, 0.85);
+        --vp-text: #1e293b;
+        --vp-primary: #6366f1;
+        --vp-primary-bg: #e0e7ff;
+        --vp-border: rgba(0, 0, 0, 0.08);
+        --vp-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+        --vp-glass: blur(16px) saturate(180%);
       }
       @media (prefers-color-scheme: dark) {
         ._vp_ui {
-          color-scheme: dark;
-          --vp-bg:#252526; --vp-bg2:#2d2d30;
-          --vp-text:#cccccc; --vp-text2:#c5c5c5;
-          --vp-muted:#858585; --vp-border:#3c3c3c;
-          --vp-blue:#3794ff; --vp-blue-lt:#08284d; --vp-blue-bd:#0e639c;
-          --vp-green:#89d185; --vp-green-bd:#27412b;
-          --vp-tip-bg:rgba(10,12,14,0.96); --vp-tip-text:#f3f4f6;
+          --vp-bg: rgba(30, 41, 59, 0.82);
+          --vp-text: #f1f5f9;
+          --vp-primary: #818cf8;
+          --vp-primary-bg: #1e1b4b;
+          --vp-border: rgba(255, 255, 255, 0.1);
+          --vp-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
         }
       }
-      ._vp_ui, ._vp_ui * { box-sizing:border-box; font-family:ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif; }
-      ._vp_ui .mi { width:18px; height:18px; display:inline-block; vertical-align:middle; fill:currentColor; }
+      ._vp_ui, ._vp_ui * { box-sizing: border-box; font-family: Inter, system-ui, -apple-system, sans-serif; }
       #_vp_float_panel {
-        position: fixed;
-        right: 12px;
-        bottom: max(14px, env(safe-area-inset-bottom));
+        position: fixed; right: 16px; bottom: calc(16px + env(safe-area-inset-bottom, 0px));
         z-index: 2147483646;
-        display: flex;
-        flex-direction: column;
-        gap: 8px;
-        pointer-events: none;
+        display: flex; flex-direction: column; align-items: flex-end; gap: 8px; pointer-events: none;
       }
       #_vp_float_panel > * { pointer-events: auto; }
       .vp-fpanel-btn {
-        display:flex; align-items:center; gap:8px;
-        min-height:46px; min-width:46px;
-        background:var(--vp-bg); color:var(--vp-text);
-        border:1px solid var(--vp-border); border-radius:14px;
-        padding:11px 13px; font-size:12px; font-weight:800;
-        cursor:pointer; max-width:54px; overflow:hidden; white-space:nowrap;
-        transition:max-width .22s ease, background .15s, border-color .15s;
+        display: flex; align-items: center; justify-content: center; gap: 0;
+        width: 44px; height: 44px; padding: 0;
+        background: var(--vp-bg); color: var(--vp-text);
+        border: 1px solid var(--vp-border); border-radius: 12px;
+        box-shadow: var(--vp-shadow); backdrop-filter: var(--vp-glass);
+        cursor: pointer; font-size: 12px; font-weight: 700;
+        overflow: hidden; white-space: nowrap;
+        transition: all 0.3s ease;
       }
-      .vp-fpanel-btn:hover { max-width:160px; background:var(--vp-blue-lt); border-color:var(--vp-blue-bd); }
-      .vp-fpanel-btn.green { color:var(--vp-green); border-color:var(--vp-green-bd); }
-      .vp-fpanel-btn.off { color:var(--vp-muted); }
-      .vp-fpanel-btn .fp-icon { font-size:16px; flex-shrink:0; }
-      .vp-fpanel-btn .fp-label { font-size:12px; overflow:hidden; }
+      .vp-fpanel-btn .fp-label { display: none; }
+      #_vp_float_panel.vp-expanded .vp-fpanel-btn:not(.vp-panel-toggle) {
+        width: auto; padding: 10px 14px; gap: 8px; justify-content: flex-start;
+      }
+      #_vp_float_panel.vp-expanded .vp-fpanel-btn:not(.vp-panel-toggle) .fp-label { display: inline; }
+      .vp-fpanel-btn .fp-icon { width: 20px; height: 20px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
+      .vp-fpanel-btn .fp-icon svg { width: 100%; height: 100%; fill: currentColor; }
+      .vp-fpanel-btn.green { color: #10b981; }
+      .vp-fpanel-btn.off { opacity: 0.6; }
+      .vp-panel-toggle { border-style: dashed; }
+      @media (hover: hover) {
+        .vp-fpanel-btn:not(.vp-panel-toggle):hover {
+          width: auto; padding: 10px 14px; gap: 8px; justify-content: flex-start;
+          transform: translateY(-2px); border-color: var(--vp-primary);
+        }
+        .vp-fpanel-btn:not(.vp-panel-toggle):hover .fp-label { display: inline; }
+      }
+
+      #_vp_tooltip {
+        position: fixed; z-index: 2147483647; pointer-events: none;
+        background: var(--vp-bg); color: var(--vp-text);
+        padding: 12px 18px; border-radius: 16px; border: 1px solid var(--vp-border);
+        box-shadow: var(--vp-shadow); backdrop-filter: var(--vp-glass);
+        font-size: 15px; line-height: 1.6; max-width: 400px; word-break: break-word;
+        font-family: inherit;
+      }
+
       @media (max-width: 768px) {
-        #_vp_float_panel {
-          right: 10px;
-          left: 10px;
-          bottom: max(10px, env(safe-area-inset-bottom));
-          flex-direction: row;
-          justify-content: flex-end;
-          flex-wrap: wrap;
-        }
-        .vp-fpanel-btn {
-          max-width: none;
-          min-height: 48px;
-          border-radius: 16px;
-        }
-        #_vp_float_panel.vp-collapsed .vp-fpanel-btn:not(.vp-panel-toggle) {
-          display: none;
-        }
-        .vp-panel-toggle {
-          opacity: .6;
-          min-width: 40px;
-          min-height: 40px;
-          padding: 8px 10px;
-          border-radius: 12px;
-        }
-        .vp-panel-toggle.vp-expanded {
-          opacity: 1;
-        }
+        #_vp_float_panel { right: 12px; bottom: calc(52px + env(safe-area-inset-bottom, 0px)); }
       }
-      ._vp_translated_parent { }
     `;
     (document.head || document.documentElement).appendChild(style);
   }
@@ -625,20 +599,7 @@
     _tooltip = document.createElement('div');
     _tooltip.id = '_vp_tooltip';
     _tooltip.className = '_vp_ui';
-    Object.assign(_tooltip.style, {
-      position: 'fixed',
-      zIndex: '2147483647',
-      pointerEvents: 'none',
-      background: 'var(--vp-tip-bg)',
-      color: 'var(--vp-tip-text)',
-      padding: '7px 13px',
-      borderRadius: '8px',
-      fontSize: '15px',
-      maxWidth: '360px',
-      wordBreak: 'break-all',
-      display: 'none',
-      lineHeight: '1.7',
-    });
+    _tooltip.style.display = 'none';
     document.body.appendChild(_tooltip);
     return _tooltip;
   }
@@ -673,6 +634,22 @@
     if (_tooltip && _tooltip.style.display !== 'none') positionTip(e);
   }
 
+  function initGlobalEvents() {
+    if (_isTouchDevice) return;
+    document.body.addEventListener('mouseover', e => {
+      const p = e.target.closest('._vp_translated_parent');
+      if (p) onNodeMouseEnter({ currentTarget: p, clientX: e.clientX, clientY: e.clientY });
+    });
+    document.body.addEventListener('mouseout', e => {
+      const p = e.target.closest('._vp_translated_parent');
+      if (p) onNodeMouseLeave();
+    });
+    document.body.addEventListener('mousemove', e => {
+      const p = e.target.closest('._vp_translated_parent');
+      if (p) onNodeMouseMove(e);
+    });
+  }
+
   function onNodeMouseLeave() {
     clearTimeout(_tipTimer);
     _tipTimer = setTimeout(() => {
@@ -695,12 +672,6 @@
         const parent = node.parentElement;
         if (parent) {
           parent.classList.add('_vp_translated_parent');
-          if (!parent._vpTooltip && !_isTouchDevice) {
-            parent.addEventListener('mouseenter', onNodeMouseEnter);
-            parent.addEventListener('mouseleave', onNodeMouseLeave);
-            parent.addEventListener('mousemove', onNodeMouseMove);
-            parent._vpTooltip = true;
-          }
         }
       });
 
@@ -715,37 +686,45 @@
     }
   }
 
-  async function realtimeTranslate(force = false) {
+  async function realtimeTranslate(force = false, rootNodes = null) {
     if (!settings.enable && !force) return;
     if (!isLoaded) await loadDicts();
-    if (_translateRunning) return;
+    if (_translateRunning && !rootNodes) return;
 
-    _translateRunning = true;
+    if (!rootNodes) _translateRunning = true;
     const session = ++_translateSession;
 
     const priorityBuckets = [[], [], [], []];
     function collectByPriority(node) {
       if (!node) return;
-      const tag = node.tagName;
+      const tag = node.nodeType === 1 ? node.tagName : '';
       if (tag === 'SCRIPT' || tag === 'STYLE' || tag === 'NOSCRIPT') return;
-      if (VP_EXCLUDE_IDS.has(node.id || '')) return;
-      const prio = getNodePriority(node);
-      const arr = [];
-      const texts = [];
-      recurTraver(node, arr, texts);
-      if (arr.length) priorityBuckets[prio].push({ arr, texts });
+      if (VP_EXCLUDE_IDS.has(node.nodeType === 1 ? (node.id || '') : '')) return;
+
+      if (node.nodeType === 3) {
+        if (CHINESE_RE.test(node.textContent) && !node._vpTranslated) {
+          const prio = getNodePriority(node.parentElement);
+          const arr = [node], texts = [node.textContent];
+          priorityBuckets[prio].push({ arr, texts });
+        }
+      } else if (node.nodeType === 1 || node.nodeType === 11) {
+        const prio = getNodePriority(node);
+        const arr = []; const texts = [];
+        recurTraver(node, arr, texts);
+        if (arr.length) priorityBuckets[prio].push({ arr, texts });
+      }
     }
 
-    if (document.body) {
+    if (rootNodes) {
+      rootNodes.forEach(n => collectByPriority(n));
+    } else if (document.body) {
       for (const child of document.body.children) collectByPriority(child);
-    }
-
-    const titleEl = document.querySelector('title');
-    if (titleEl) {
-      const arr = [];
-      const texts = [];
-      recurTraver(titleEl, arr, texts);
-      if (arr.length) priorityBuckets[0].unshift({ arr, texts });
+      const titleEl = document.querySelector('title');
+      if (titleEl) {
+        const arr = []; const texts = [];
+        recurTraver(titleEl, arr, texts);
+        if (arr.length) priorityBuckets[0].unshift({ arr, texts });
+      }
     }
 
     const allArr = [];
@@ -758,7 +737,7 @@
     }
 
     if (!allArr.length) {
-      _translateRunning = false;
+      if (!rootNodes) _translateRunning = false;
       return;
     }
 
@@ -769,11 +748,12 @@
           firstTrans = false;
           if (settings.enablescript) startObserver();
           if (settings.enableajax) attachAjaxInterceptor();
+          initGlobalEvents(); // Thêm event delegation
         }
-        setTimeout(() => removeOverflow(), 80);
+        setTimeout(() => removeOverflow(allArr), 80);
       }
     } finally {
-      _translateRunning = false;
+      if (!rootNodes) _translateRunning = false;
     }
   }
 
@@ -811,7 +791,17 @@
 
   function startObserver() {
     if (observer) observer.disconnect();
-    observer = new MutationObserver(() => {
+    const pendingNodes = new Set();
+    observer = new MutationObserver((mutations) => {
+      if (settings.enable === false) return;
+      for (const m of mutations) {
+        if (m.type === 'childList') {
+          for (const n of m.addedNodes) {
+            if (n.nodeType === 3 || n.nodeType === 1) pendingNodes.add(n);
+          }
+        }
+      }
+
       if (mutLock) {
         deferCheck = true;
         return;
@@ -819,12 +809,13 @@
       mutLock = true;
       setTimeout(() => {
         mutLock = false;
-        if (deferCheck) {
+        if (deferCheck || pendingNodes.size > 0) {
           deferCheck = false;
-          realtimeTranslate();
+          const nodes = [...pendingNodes];
+          pendingNodes.clear();
+          realtimeTranslate(false, nodes);
         }
       }, deferDelay);
-      realtimeTranslate();
     });
     observer.observe(document.body, { childList: true, subtree: true });
   }
@@ -836,25 +827,44 @@
     return el.clientWidth < el.scrollWidth || el.clientHeight < el.scrollHeight;
   }
 
-  function removeOverflow() {
+  function removeOverflow(nodes = null) {
     if (!settings.heightauto && !settings.widthauto && !settings.scaleauto) return;
 
-    if (settings.heightauto || settings.widthauto) {
-      document.querySelectorAll('div:not([_vp_calc]),nav,main:not([_vp_calc]),section:not([_vp_calc])').forEach(e => {
-        e.setAttribute('_vp_calc', '1');
-        const stl = getComputedStyle(e);
-        if (!checkOverflow(e, stl)) return;
-        if (settings.heightauto) {
-          if (stl.maxHeight === 'none') e.style.maxHeight = (parseInt(stl.height, 10) * 2) + 'px';
-          if (parseInt(stl.height, 10) + 'px' === stl.height) e.style.minHeight = stl.height;
-          if (stl.overflowY !== 'auto' && stl.overflowY !== 'scroll') e.style.height = 'auto';
+    const targets = new Set();
+    if (nodes) {
+      for (const n of nodes) {
+        let cur = n.parentElement;
+        while (cur && cur !== document.body && !cur.hasAttribute('_vp_calc')) {
+          const tag = cur.tagName;
+          if (tag === 'DIV' || tag === 'NAV' || tag === 'MAIN' || tag === 'SECTION' || tag === 'ARTICLE') {
+            targets.add(cur);
+          }
+          cur = cur.parentElement;
         }
-        if (settings.widthauto) {
-          if (parseInt(stl.width, 10) + 'px' === stl.width) e.style.minWidth = stl.width;
-          e.style.width = 'auto';
-        }
-      });
+      }
+    } else {
+      document.querySelectorAll('div:not([_vp_calc]),nav,main,section,article').forEach(e => targets.add(e));
     }
+
+    targets.forEach(e => {
+      e.setAttribute('_vp_calc', '1');
+      const stl = getComputedStyle(e);
+      if (!checkOverflow(e, stl)) return;
+
+      if (settings.heightauto) {
+        if (stl.maxHeight === 'none')
+          e.style.maxHeight = (parseInt(stl.height, 10) * 2) + 'px';
+        if (parseInt(stl.height, 10) + 'px' === stl.height)
+          e.style.minHeight = stl.height;
+        if (stl.overflowY !== 'auto' && stl.overflowY !== 'scroll')
+          e.style.height = 'auto';
+      }
+      if (settings.widthauto) {
+        if (parseInt(stl.width, 10) + 'px' === stl.width)
+          e.style.minWidth = stl.width;
+        e.style.width = 'auto';
+      }
+    });
 
     if (settings.scaleauto) {
       const sel = 'a:not([_vp_calc]),button:not([_vp_calc]),span:not([_vp_calc]),li:not([_vp_calc]),h1:not([_vp_calc]),h2:not([_vp_calc]),h3:not([_vp_calc]),h4:not([_vp_calc]),label:not([_vp_calc])';
@@ -989,8 +999,8 @@
 
     if (_isTouchDevice) {
       const btnCollapse = document.createElement('button');
-      btnCollapse.className = 'vp-fpanel-btn vp-panel-toggle' + (_panelCollapsed ? '' : ' vp-expanded');
-      btnCollapse.title = _panelCollapsed ? 'Hiện các nút' : 'Ẩn các nút';
+      btnCollapse.className = 'vp-fpanel-btn vp-panel-toggle';
+      btnCollapse.title = _panelCollapsed ? 'Hiện menu' : 'Ẩn menu';
       const collapseIconSpan = document.createElement('span');
       collapseIconSpan.className = 'fp-icon';
       collapseIconSpan.appendChild(createSvgIcon(_panelCollapsed ? 'show' : 'hide'));
@@ -999,20 +1009,17 @@
         _panelCollapsed = !_panelCollapsed;
         gmSet('vp_lite_panel_collapsed', _panelCollapsed);
         if (_panelCollapsed) {
-          _floatPanel.classList.add('vp-collapsed');
-          btnCollapse.classList.remove('vp-expanded');
-          btnCollapse.title = 'Hiện các nút';
+          _floatPanel.classList.remove('vp-expanded');
+          btnCollapse.title = 'Hiện menu';
           setIconContent(collapseIconSpan, 'show');
         } else {
-          _floatPanel.classList.remove('vp-collapsed');
-          btnCollapse.classList.add('vp-expanded');
-          btnCollapse.title = 'Ẩn các nút';
+          _floatPanel.classList.add('vp-expanded');
+          btnCollapse.title = 'Ẩn menu';
           setIconContent(collapseIconSpan, 'hide');
         }
       };
       _floatPanel.appendChild(btnCollapse);
-      if (_panelCollapsed) _floatPanel.classList.add('vp-collapsed');
-      else _floatPanel.classList.remove('vp-collapsed');
+      _floatPanel.classList.toggle('vp-expanded', !_panelCollapsed);
     }
 
     const isOn = settings.enable;
@@ -1033,15 +1040,6 @@
 
   GM_registerMenuCommand('▶ Dịch trang', () => realtimeTranslate(true));
   GM_registerMenuCommand('🔄 Làm mới bản dịch', () => restoreAndRetranslate());
-  GM_registerMenuCommand('⟳ Tải lại từ điển từ nguồn', async () => {
-    try {
-      await reloadDictsFromSource();
-      restoreAndRetranslate();
-    } catch (err) {
-      console.error('[VP Lite] reload dicts failed:', err);
-      alert('Không tải lại được từ điển: ' + err.message);
-    }
-  });
   GM_registerMenuCommand('⏯ Bật/Tắt auto translate', () => {
     settings.enable = !settings.enable;
     gmSet('vp_lite_options', Object.assign({}, settings));
