@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Vietphrase Realtime Translator Lite
 // @namespace    https://github.com/duongden/script-vietphrase-translator
-// @version      2.1.4
+// @version      2.2.0
 // @description  Dịch trực tiếp văn bản Hán ngữ sang tiếng Việt trên mọi trang web bằng từ điển Vietphrase tải từ link GitHub raw.
 // @author       duongden
 // @license      GPL-3.0
@@ -24,7 +24,7 @@
   const DB_NAME = 'VietphraseDBLite';
   const DB_VER = 1;
   const STORE = 'dicts';
-  const CHINESE_RE = /[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\u3007]/;
+  const CHINESE_RE = /[㐀-䶿一-鿿豈-﫿〇]/;
   const DICH_LIEU_SET = new Set(['的', '了', '着', '著']);
   const DEFAULT_DICT_URLS = {
     PA: 'https://raw.githubusercontent.com/duongden/script-vietphrase-translator/refs/heads/main/ChinesePhienAmWords.txt',
@@ -40,18 +40,13 @@
   let dictNamesKeys = [];
   let isLoaded = false;
 
-  let settings = {
-    enable: true,
+  const settings = {
     ngoac: false,
     motnghia: true,
     daucach: '/',
     dichlieu: true,
-    showTransBtn: true,
     heightauto: true,
-    widthauto: false,
     scaleauto: true,
-    enableajax: false,
-    enablescript: true,
     delayMutation: 200,
     delayTrans: 120,
   };
@@ -64,12 +59,6 @@
   let observer = null;
   let _translateRunning = false;
   let _translateSession = 0;
-  let _floatPanel = null;
-  let _ajaxAttached = false;
-  let _tooltip = null;
-  let _tipTimer = null;
-  let _panelCollapsed = false;
-  const _isTouchDevice = navigator.maxTouchPoints > 0 || 'ontouchstart' in window;
 
   function gmGet(key, def) {
     try {
@@ -81,9 +70,7 @@
   }
 
   function gmSet(key, val) {
-    try {
-      GM_setValue(key, val);
-    } catch (e) { /* silent */ }
+    try { GM_setValue(key, val); } catch (e) { /* silent */ }
   }
 
   function gmFetch(url) {
@@ -95,6 +82,8 @@
           ? resolve(r.responseText)
           : reject(new Error(`HTTP ${r.status}: ${url}`)),
         onerror: () => reject(new Error(`Network error: ${url}`)),
+        ontimeout: () => reject(new Error(`Timeout: ${url}`)),
+        timeout: 30000,
       });
     });
   }
@@ -109,10 +98,7 @@
           db.createObjectStore(STORE, { keyPath: 'name' });
         }
       };
-      req.onsuccess = e => {
-        _db = e.target.result;
-        resolve(_db);
-      };
+      req.onsuccess = e => { _db = e.target.result; resolve(_db); };
       req.onerror = e => reject(e.target.error);
     });
   }
@@ -203,7 +189,6 @@
     console.log(`[VP Lite] PA=${Object.keys(dictPA).length} VP=${dictVPKeys.length} Names=${dictNamesKeys.length}`);
   }
 
-
   function hasHanChar(text) {
     return CHINESE_RE.test(String(text || ''));
   }
@@ -225,8 +210,8 @@
     ['〈', '\x02'], ['〉', '\x03'],
     ['「', '\x02'], ['」', '\x03'],
     ['『', '\x02'], ['』', '\x03'],
-    ['\u201c', '\x02'], ['\u201d', '\x03'],
-    ['\u2018', '\x04'], ['\u2019', '\x05'],
+    ['“', '\x02'], ['”', '\x03'],
+    ['‘', '\x04'], ['’', '\x05'],
     ['【', '['], ['】', ']'],
     ['〔', '['], ['〕', ']'],
     ['〖', '['], ['〗', ']'],
@@ -236,7 +221,7 @@
     ['；', ';'], ['：', ':'], ['，', ','], ['、', ','],
     ['……', '...'], ['…', '...'],
     ['——', '—'], ['—', '—'], ['－', '-'], ['～', '~'],
-    ['•', '·'], ['\u3000', ' '],
+    ['•', '·'], ['　', ' '],
     ['／', '/'], ['＼', '\\'],
     ['！', '!'], ['＂', '"'], ['＃', '#'], ['＄', '$'], ['％', '%'],
     ['＆', '&'], ['＇', "'"], ['＊', '*'], ['＋', '+'], ['＜', '<'],
@@ -255,8 +240,8 @@
     return s
       .replace(/\x02/g, '"')
       .replace(/\x03/g, '"')
-      .replace(/\x04/g, '\u2018')
-      .replace(/\x05/g, '\u2019');
+      .replace(/\x04/g, '‘')
+      .replace(/\x05/g, '’');
   }
 
   function joinTranslatedTokens(tokens) {
@@ -267,10 +252,7 @@
 
     for (const tok of tokens) {
       if (!tok) continue;
-      if (!result) {
-        result = tok;
-        continue;
-      }
+      if (!result) { result = tok; continue; }
 
       const last = result[result.length - 1];
       const first = tok[0];
@@ -302,7 +284,6 @@
     if (!s || !s.trim()) return s;
     const trimmed = s.trimStart();
     if (trimmed) s = trimmed[0].toUpperCase() + trimmed.slice(1);
-    // Viết hoa sau dấu kết câu: ". ", "! ", "? " (hỗ trợ cả khi thiếu space)
     s = s.replace(/([.!?])(\s*)([a-zàáâãèéêìíòóôõùúýăđơưạảấầẩẫậắằẳẵặẹẻẽếềểễệỉịọỏốồổỗộớờởỡợụủứừửữựỳỷỹ])/g,
       (_, p, sp, c) => p + sp + c.toUpperCase());
     s = s.replace(/(:\s+\x02)([a-zàáâãèéêìíòóôõùúýăđơưạảấầẩẫậắằẳẵặẹẻẽếềểễệỉịọỏốồổỗộớờởỡợụủứừửữựỳỷỹ])/g,
@@ -322,15 +303,9 @@
       if (!name) continue;
       const nextSegments = [];
       for (const seg of segments) {
-        if (seg.isName) {
-          nextSegments.push(seg);
-          continue;
-        }
+        if (seg.isName) { nextSegments.push(seg); continue; }
         const parts = seg.text.split(name);
-        if (parts.length === 1) {
-          nextSegments.push(seg);
-          continue;
-        }
+        if (parts.length === 1) { nextSegments.push(seg); continue; }
         let nameVal = dictNames[name];
         nameVal = motnghia ? nameVal.split(daucach)[0].trim() : nameVal.trim();
         if (ngoac) nameVal = '[' + nameVal + ']';
@@ -346,10 +321,7 @@
     const maxLen = dictVPKeys.length ? dictVPKeys[0].length : 1;
 
     for (const seg of segments) {
-      if (seg.isName) {
-        tokens.push(seg.text);
-        continue;
-      }
+      if (seg.isName) { tokens.push(seg.text); continue; }
       const s = seg.text;
       let i = 0;
       while (i < s.length) {
@@ -376,10 +348,7 @@
           i += raw.length || 1;
           continue;
         }
-        if (dichlieu && DICH_LIEU_SET.has(c)) {
-          i++;
-          continue;
-        }
+        if (dichlieu && DICH_LIEU_SET.has(c)) { i++; continue; }
         tokens.push(dictPA[c] || c);
         i++;
       }
@@ -390,86 +359,10 @@
     return resolvePlaceholders(result);
   }
 
-  function injectThemeStyle() {
-    if (document.getElementById('_vp_theme_style')) return;
-    const style = document.createElement('style');
-    style.id = '_vp_theme_style';
-    style.textContent = `
-      ._vp_ui {
-        color-scheme: light dark;
-        --vp-bg: rgba(255, 255, 255, 0.85);
-        --vp-text: #1e293b;
-        --vp-primary: #6366f1;
-        --vp-primary-bg: #e0e7ff;
-        --vp-border: rgba(0, 0, 0, 0.08);
-        --vp-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
-        --vp-glass: blur(16px) saturate(180%);
-      }
-      @media (prefers-color-scheme: dark) {
-        ._vp_ui {
-          --vp-bg: rgba(30, 41, 59, 0.82);
-          --vp-text: #f1f5f9;
-          --vp-primary: #818cf8;
-          --vp-primary-bg: #1e1b4b;
-          --vp-border: rgba(255, 255, 255, 0.1);
-          --vp-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
-        }
-      }
-      ._vp_ui, ._vp_ui * { box-sizing: border-box; font-family: Inter, system-ui, -apple-system, sans-serif; }
-      #_vp_float_panel {
-        position: fixed; right: 16px; bottom: calc(16px + env(safe-area-inset-bottom, 0px));
-        z-index: 2147483646;
-        display: flex; flex-direction: column; align-items: flex-end; gap: 8px; pointer-events: none;
-      }
-      #_vp_float_panel > * { pointer-events: auto; }
-      .vp-fpanel-btn {
-        display: flex; align-items: center; justify-content: center; gap: 0;
-        width: 44px; height: 44px; padding: 0;
-        background: var(--vp-bg); color: var(--vp-text);
-        border: 1px solid var(--vp-border); border-radius: 12px;
-        box-shadow: var(--vp-shadow); backdrop-filter: var(--vp-glass);
-        cursor: pointer; font-size: 12px; font-weight: 700;
-        overflow: hidden; white-space: nowrap;
-        transition: all 0.3s ease;
-      }
-      .vp-fpanel-btn .fp-label { display: none; }
-      #_vp_float_panel.vp-expanded .vp-fpanel-btn:not(.vp-panel-toggle) {
-        width: auto; padding: 10px 14px; gap: 8px; justify-content: flex-start;
-      }
-      #_vp_float_panel.vp-expanded .vp-fpanel-btn:not(.vp-panel-toggle) .fp-label { display: inline; }
-      .vp-fpanel-btn .fp-icon { width: 20px; height: 20px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; }
-      .vp-fpanel-btn .fp-icon svg { width: 100%; height: 100%; fill: currentColor; }
-      .vp-fpanel-btn.green { color: #10b981; }
-      .vp-fpanel-btn.off { opacity: 0.6; }
-      .vp-panel-toggle { border-style: dashed; }
-      @media (hover: hover) {
-        .vp-fpanel-btn:not(.vp-panel-toggle):hover {
-          width: auto; padding: 10px 14px; gap: 8px; justify-content: flex-start;
-          transform: translateY(-2px); border-color: var(--vp-primary);
-        }
-        .vp-fpanel-btn:not(.vp-panel-toggle):hover .fp-label { display: inline; }
-      }
-
-      #_vp_tooltip {
-        position: fixed; z-index: 2147483647; pointer-events: none;
-        background: var(--vp-bg); color: var(--vp-text);
-        padding: 12px 18px; border-radius: 16px; border: 1px solid var(--vp-border);
-        box-shadow: var(--vp-shadow); backdrop-filter: var(--vp-glass);
-        font-size: 15px; line-height: 1.6; max-width: 400px; word-break: break-word;
-        font-family: inherit;
-      }
-
-      @media (max-width: 768px) {
-        #_vp_float_panel { right: 12px; bottom: calc(52px + env(safe-area-inset-bottom, 0px)); }
-      }
-    `;
-    (document.head || document.documentElement).appendChild(style);
-  }
-
-  const VP_EXCLUDE_IDS = new Set(['_vp_tooltip', '_vp_float_panel', '_vp_theme_style']);
+  const VP_EXCLUDE_IDS = new Set(['_vp_theme_style']);
   const CHUNK_SIZE = 80;
-  const VIET_END_RE = /[a-zA-Z\u00C0-\u1EF9]$/;
-  const VIET_START_RE = /^[a-zA-Z\u00C0-\u1EF9]/;
+  const VIET_END_RE = /[a-zA-ZÀ-ỹ]$/;
+  const VIET_START_RE = /^[a-zA-ZÀ-ỹ]/;
 
   function getNodePriority(el) {
     if (!el) return 3;
@@ -593,70 +486,6 @@
     checkAndFix(textNode, getNextMeaningfulSibling(textNode));
   }
 
-  function getTooltip() {
-    if (_tooltip) return _tooltip;
-    injectThemeStyle();
-    _tooltip = document.createElement('div');
-    _tooltip.id = '_vp_tooltip';
-    _tooltip.className = '_vp_ui';
-    _tooltip.style.display = 'none';
-    document.body.appendChild(_tooltip);
-    return _tooltip;
-  }
-
-  function positionTip(e) {
-    if (!_tooltip) return;
-    const vw = window.innerWidth;
-    const vh = window.innerHeight;
-    let x = e.clientX + 14;
-    let y = e.clientY + 16;
-    const tw = Math.min(360, vw * 0.45);
-    if (x + tw > vw - 12) x = e.clientX - tw - 12;
-    if (y + 80 > vh) y = e.clientY - 70;
-    _tooltip.style.left = x + 'px';
-    _tooltip.style.top = y + 'px';
-  }
-
-  function onNodeMouseEnter(e) {
-    let original = '';
-    for (const child of e.currentTarget.childNodes) {
-      if (child.nodeType === 3 && child._vpOrigin) original += child._vpOrigin;
-    }
-    if (!original) return;
-    clearTimeout(_tipTimer);
-    const tip = getTooltip();
-    tip.textContent = original;
-    tip.style.display = 'block';
-    positionTip(e);
-  }
-
-  function onNodeMouseMove(e) {
-    if (_tooltip && _tooltip.style.display !== 'none') positionTip(e);
-  }
-
-  function initGlobalEvents() {
-    if (_isTouchDevice) return;
-    document.body.addEventListener('mouseover', e => {
-      const p = e.target.closest('._vp_translated_parent');
-      if (p) onNodeMouseEnter({ currentTarget: p, clientX: e.clientX, clientY: e.clientY });
-    });
-    document.body.addEventListener('mouseout', e => {
-      const p = e.target.closest('._vp_translated_parent');
-      if (p) onNodeMouseLeave();
-    });
-    document.body.addEventListener('mousemove', e => {
-      const p = e.target.closest('._vp_translated_parent');
-      if (p) onNodeMouseMove(e);
-    });
-  }
-
-  function onNodeMouseLeave() {
-    clearTimeout(_tipTimer);
-    _tipTimer = setTimeout(() => {
-      if (_tooltip) _tooltip.style.display = 'none';
-    }, 120);
-  }
-
   async function translateChunked(arr, texts, session) {
     for (let start = 0; start < arr.length; start += CHUNK_SIZE) {
       if (_translateSession !== session) return;
@@ -669,10 +498,6 @@
         node._vpOrigin = node.textContent;
         node.textContent = translated[i];
         node._vpTranslated = true;
-        const parent = node.parentElement;
-        if (parent) {
-          parent.classList.add('_vp_translated_parent');
-        }
       });
 
       if (start + CHUNK_SIZE < arr.length) {
@@ -687,12 +512,17 @@
   }
 
   async function realtimeTranslate(force = false, rootNodes = null) {
-    if (!settings.enable && !force) return;
-    if (!isLoaded) await loadDicts();
     if (_translateRunning && !rootNodes) return;
-
     if (!rootNodes) _translateRunning = true;
     const session = ++_translateSession;
+
+    try {
+      if (!isLoaded) await loadDicts();
+    } catch (err) {
+      console.warn('[VP Lite] loadDicts failed:', err);
+      if (!rootNodes) _translateRunning = false;
+      return;
+    }
 
     const priorityBuckets = [[], [], [], []];
     function collectByPriority(node) {
@@ -704,8 +534,7 @@
       if (node.nodeType === 3) {
         if (CHINESE_RE.test(node.textContent) && !node._vpTranslated) {
           const prio = getNodePriority(node.parentElement);
-          const arr = [node], texts = [node.textContent];
-          priorityBuckets[prio].push({ arr, texts });
+          priorityBuckets[prio].push({ arr: [node], texts: [node.textContent] });
         }
       } else if (node.nodeType === 1 || node.nodeType === 11) {
         const prio = getNodePriority(node);
@@ -743,13 +572,9 @@
 
     try {
       await translateChunked(allArr, allTexts, session);
-      if (_translateSession === session) {
-        if (firstTrans) {
-          firstTrans = false;
-          if (settings.enablescript) startObserver();
-          if (settings.enableajax) attachAjaxInterceptor();
-          initGlobalEvents(); // Thêm event delegation
-        }
+      if (_translateSession === session && firstTrans) {
+        firstTrans = false;
+        startObserver();
         setTimeout(() => removeOverflow(allArr), 80);
       }
     } finally {
@@ -767,15 +592,11 @@
       if (node.tagName === 'SCRIPT' || node.tagName === 'STYLE') return;
       const toRemove = [];
       for (const child of node.childNodes) {
-        if (child._vpSpaceNode) {
-          toRemove.push(child);
-          continue;
-        }
+        if (child._vpSpaceNode) { toRemove.push(child); continue; }
         if (child.nodeType === 3 && child._vpOrigin) {
           child.textContent = child._vpOrigin;
           child._vpOrigin = undefined;
           child._vpTranslated = false;
-          if (child.parentElement) child.parentElement.classList.remove('_vp_translated_parent');
         } else if (child.nodeType === 1) {
           restore(child);
         }
@@ -793,7 +614,6 @@
     if (observer) observer.disconnect();
     const pendingNodes = new Set();
     observer = new MutationObserver((mutations) => {
-      if (settings.enable === false) return;
       for (const m of mutations) {
         if (m.type === 'childList') {
           for (const n of m.addedNodes) {
@@ -802,10 +622,7 @@
         }
       }
 
-      if (mutLock) {
-        deferCheck = true;
-        return;
-      }
+      if (mutLock) { deferCheck = true; return; }
       mutLock = true;
       setTimeout(() => {
         mutLock = false;
@@ -828,7 +645,7 @@
   }
 
   function removeOverflow(nodes = null) {
-    if (!settings.heightauto && !settings.widthauto && !settings.scaleauto) return;
+    if (!settings.heightauto && !settings.scaleauto) return;
 
     const targets = new Set();
     if (nodes) {
@@ -859,11 +676,6 @@
         if (stl.overflowY !== 'auto' && stl.overflowY !== 'scroll')
           e.style.height = 'auto';
       }
-      if (settings.widthauto) {
-        if (parseInt(stl.width, 10) + 'px' === stl.width)
-          e.style.minWidth = stl.width;
-        e.style.width = 'auto';
-      }
     });
 
     if (settings.scaleauto) {
@@ -883,190 +695,29 @@
     }
   }
 
-  // Monkey-patch XMLHttpRequest.send and window.fetch to trigger
-  // re-translation after any AJAX response. This is intentional:
-  // many novel/reading sites load chapter content dynamically via
-  // XHR or fetch, so we need to detect and translate new Chinese
-  // text that appears after these requests complete.
-  function attachAjaxInterceptor() {
-    if (_ajaxAttached || !settings.enableajax) return;
-    _ajaxAttached = true;
-
-    const origSend = XMLHttpRequest.prototype.send;
-    XMLHttpRequest.prototype.send = function (...args) {
-      this.addEventListener('load', () => {
-        if (settings.enable) setTimeout(() => realtimeTranslate(), translateDelay);
-      });
-      return origSend.apply(this, args);
-    };
-
-    const origFetch = window.fetch;
-    window.fetch = async function (...args) {
-      const res = await origFetch.apply(this, args);
-      if (settings.enable) setTimeout(() => realtimeTranslate(), translateDelay);
-      return res;
-    };
-  }
-
-  const SVG_NS = 'http://www.w3.org/2000/svg';
-  const ICON_PATHS = {
-    play: 'M8 5v14l11-7z',
-    refresh: 'M17.65 6.35A7.95 7.95 0 0 0 12 4V1L7 6l5 5V7a5 5 0 1 1-5 5H5a7 7 0 1 0 12.65-5.65',
-    progress: 'M12 2a10 10 0 1 0 10 10h-2a8 8 0 1 1-8-8z',
-    done: 'M9 16.17 4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z',
-    toggleOn: 'M7 7h10a5 5 0 0 1 0 10H7A5 5 0 0 1 7 7m10 8a3 3 0 0 0 0-6H7a3 3 0 0 0 0 6zm0-1.5A2.5 2.5 0 1 0 17 8.5a2.5 2.5 0 0 0 0 5',
-    toggleOff: 'M7 7h10a5 5 0 0 1 0 10H7A5 5 0 0 1 7 7m0 2a3 3 0 0 0 0 6h10a3 3 0 0 0 0-6zm0 4.5A2.5 2.5 0 1 1 7 8.5a2.5 2.5 0 0 1 0 5',
-    hide: 'M19 13H5v-2h14z',
-    show: 'M4 6h16v2H4zm0 5h16v2H4zm0 5h16v2H4z',
-  };
-
-  function createSvgIcon(name) {
-    const svg = document.createElementNS(SVG_NS, 'svg');
-    svg.setAttribute('class', 'mi');
-    svg.setAttribute('viewBox', '0 0 24 24');
-    svg.setAttribute('aria-hidden', 'true');
-    const pathData = ICON_PATHS[name] || '';
-    if (pathData) {
-      const path = document.createElementNS(SVG_NS, 'path');
-      path.setAttribute('d', pathData);
-      svg.appendChild(path);
-    }
-    return svg;
-  }
-
-  function setIconContent(container, iconName) {
-    while (container.firstChild) container.removeChild(container.firstChild);
-    container.appendChild(createSvgIcon(iconName));
-  }
-
-  function mkBtn(iconName, label, cls, title) {
-    const btn = document.createElement('button');
-    btn.className = 'vp-fpanel-btn' + (cls ? ' ' + cls : '');
-    btn.title = title || label;
-    const iconSpan = document.createElement('span');
-    iconSpan.className = 'fp-icon';
-    iconSpan.appendChild(createSvgIcon(iconName));
-    const labelSpan = document.createElement('span');
-    labelSpan.className = 'fp-label';
-    labelSpan.textContent = label;
-    btn.appendChild(iconSpan);
-    btn.appendChild(labelSpan);
-    return btn;
-  }
-
-  function buildFloatPanel() {
-    if (!settings.showTransBtn) {
-      const existingPanel = document.getElementById('_vp_float_panel');
-      if (existingPanel) existingPanel.remove();
-      _floatPanel = null;
-      return;
-    }
-
-    if (!_floatPanel || !document.getElementById('_vp_float_panel')) {
-      injectThemeStyle();
-      _floatPanel = document.createElement('div');
-      _floatPanel.id = '_vp_float_panel';
-      _floatPanel.className = '_vp_ui';
-      document.body.appendChild(_floatPanel);
-    }
-
-    while (_floatPanel.firstChild) _floatPanel.removeChild(_floatPanel.firstChild);
-
-    const btnTrans = mkBtn('play', 'Dịch VP', '', 'Dịch trang ngay');
-    let transBusy = false;
-    btnTrans.onclick = async () => {
-      if (transBusy) return;
-      transBusy = true;
-      setIconContent(btnTrans.querySelector('.fp-icon'), 'progress');
-      await realtimeTranslate(true);
-      setIconContent(btnTrans.querySelector('.fp-icon'), 'done');
-      setTimeout(() => {
-        transBusy = false;
-        setIconContent(btnTrans.querySelector('.fp-icon'), 'play');
-      }, 1500);
-    };
-    _floatPanel.appendChild(btnTrans);
-
-    const btnReload = mkBtn('refresh', 'Làm mới', 'green', 'Làm mới bản dịch');
-    btnReload.onclick = () => {
-      setIconContent(btnReload.querySelector('.fp-icon'), 'progress');
-      restoreAndRetranslate();
-      setTimeout(() => {
-        setIconContent(btnReload.querySelector('.fp-icon'), 'refresh');
-      }, 1200);
-    };
-    _floatPanel.appendChild(btnReload);
-
-    if (_isTouchDevice) {
-      const btnCollapse = document.createElement('button');
-      btnCollapse.className = 'vp-fpanel-btn vp-panel-toggle';
-      btnCollapse.title = _panelCollapsed ? 'Hiện menu' : 'Ẩn menu';
-      const collapseIconSpan = document.createElement('span');
-      collapseIconSpan.className = 'fp-icon';
-      collapseIconSpan.appendChild(createSvgIcon(_panelCollapsed ? 'show' : 'hide'));
-      btnCollapse.appendChild(collapseIconSpan);
-      btnCollapse.onclick = () => {
-        _panelCollapsed = !_panelCollapsed;
-        gmSet('vp_lite_panel_collapsed', _panelCollapsed);
-        if (_panelCollapsed) {
-          _floatPanel.classList.remove('vp-expanded');
-          btnCollapse.title = 'Hiện menu';
-          setIconContent(collapseIconSpan, 'show');
-        } else {
-          _floatPanel.classList.add('vp-expanded');
-          btnCollapse.title = 'Ẩn menu';
-          setIconContent(collapseIconSpan, 'hide');
-        }
-      };
-      _floatPanel.appendChild(btnCollapse);
-      _floatPanel.classList.toggle('vp-expanded', !_panelCollapsed);
-    }
-
-    const isOn = settings.enable;
-    const btnToggle = mkBtn(
-      isOn ? 'toggleOn' : 'toggleOff',
-      isOn ? 'Auto ON' : 'Auto OFF',
-      isOn ? 'green' : 'off',
-      isOn ? 'Tắt dịch tự động' : 'Bật dịch tự động'
-    );
-    btnToggle.onclick = () => {
-      settings.enable = !settings.enable;
-      gmSet('vp_lite_options', Object.assign({}, settings));
-      buildFloatPanel();
-      if (settings.enable) realtimeTranslate(true);
-    };
-    _floatPanel.appendChild(btnToggle);
-  }
-
   GM_registerMenuCommand('▶ Dịch trang', () => realtimeTranslate(true));
   GM_registerMenuCommand('🔄 Làm mới bản dịch', () => restoreAndRetranslate());
-  GM_registerMenuCommand('⏯ Bật/Tắt auto translate', () => {
-    settings.enable = !settings.enable;
-    gmSet('vp_lite_options', Object.assign({}, settings));
-    buildFloatPanel();
-    if (settings.enable) realtimeTranslate(true);
-  });
 
   (async function init() {
     const stored = gmGet('vp_lite_options', null);
-    if (stored && typeof stored === 'object') Object.assign(settings, stored);
-    if (_isTouchDevice) _panelCollapsed = !!gmGet('vp_lite_panel_collapsed', false);
-    deferDelay = settings.delayMutation !== undefined && settings.delayMutation !== null ? settings.delayMutation : 200;
-    translateDelay = settings.delayTrans !== undefined && settings.delayTrans !== null ? settings.delayTrans : 120;
+    if (stored && typeof stored === 'object') {
+      // Chỉ lấy settings không liên quan đến bật/tắt từ storage
+      const safeKeys = ['ngoac', 'motnghia', 'daucach', 'dichlieu', 'heightauto', 'scaleauto', 'delayMutation', 'delayTrans'];
+      for (const k of safeKeys) {
+        if (stored[k] !== undefined) settings[k] = stored[k];
+      }
+    }
+    deferDelay = settings.delayMutation;
+    translateDelay = settings.delayTrans;
 
     try {
       await loadDicts();
     } catch (err) {
-      console.warn('[VP Lite] loadDicts failed:', err);
+      console.warn('[VP Lite] loadDicts failed on init:', err);
     }
 
-    if (document.body) buildFloatPanel();
-    else document.addEventListener('DOMContentLoaded', buildFloatPanel);
-
-    if (settings.enable) {
-      setTimeout(() => realtimeTranslate(), translateDelay);
-    }
-
-    if (settings.enableajax) attachAjaxInterceptor();
+    const doTranslate = () => setTimeout(() => realtimeTranslate(true), translateDelay);
+    if (document.body) doTranslate();
+    else document.addEventListener('DOMContentLoaded', doTranslate);
   })();
 })();
