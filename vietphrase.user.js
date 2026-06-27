@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Vietphrase Realtime Translator Lite
 // @namespace    https://github.com/duongden/script-vietphrase-translator
-// @version      2.2.0
+// @version      2.2.1
 // @description  Dịch trực tiếp văn bản Hán ngữ sang tiếng Việt trên mọi trang web bằng từ điển Vietphrase tải từ link GitHub raw.
 // @author       duongden
 // @license      GPL-3.0
@@ -24,13 +24,39 @@
   const DB_NAME = 'VietphraseDBLite';
   const DB_VER = 1;
   const STORE = 'dicts';
-  const CHINESE_RE = /[㐀-䶿一-鿿豈-﫿〇]/;
+  const CHINESE_RE = /[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\u3007]/;
   const DICH_LIEU_SET = new Set(['的', '了', '着', '著']);
   const DEFAULT_DICT_URLS = {
     PA: 'https://raw.githubusercontent.com/duongden/script-vietphrase-translator/refs/heads/main/ChinesePhienAmWords.txt',
     VP: 'https://raw.githubusercontent.com/duongden/script-vietphrase-translator/refs/heads/main/Vietphrase.txt',
     Names: 'https://raw.githubusercontent.com/duongden/script-vietphrase-translator/refs/heads/main/Names.txt'
   };
+
+  function fixVietnamese(text) {
+    return (text ?? '').toString().normalize('NFC');
+  }
+
+  function normalizeDictObject(data) {
+    const normalized = {};
+    for (const [key, value] of Object.entries(data || {})) {
+      normalized[fixVietnamese(key)] = fixVietnamese(value);
+    }
+    return normalized;
+  }
+
+  function injectVietnameseStyle() {
+    if (document.getElementById('_vp_lite_vietnamese_style')) return;
+    const style = document.createElement('style');
+    style.id = '_vp_lite_vietnamese_style';
+    style.textContent = `
+      ._vp_translated_parent {
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans", Arial, sans-serif !important;
+        text-rendering: optimizeLegibility;
+        -webkit-font-smoothing: antialiased;
+      }
+    `;
+    (document.head || document.documentElement).appendChild(style);
+  }
 
   let _db = null;
   let dictPA = {};
@@ -136,13 +162,13 @@
 
   function parseDict(text, mode = '') {
     const out = {};
-    for (const raw of String(text).split(/\r?\n/)) {
+    for (const raw of fixVietnamese(text).split(/\r?\n/)) {
       const line = raw.trim();
       if (!line || line.startsWith('//') || line.startsWith('#') || line.startsWith('=')) continue;
       const eq = line.indexOf('=');
       if (eq < 1) continue;
-      const k = line.slice(0, eq).trim();
-      const v = line.slice(eq + 1).trim();
+      const k = fixVietnamese(line.slice(0, eq)).trim();
+      const v = fixVietnamese(line.slice(eq + 1)).trim();
       if (!k || !v) continue;
       if (mode === 'PA') {
         const chars = [...k];
@@ -180,9 +206,9 @@
   async function loadDicts() {
     let all = await dbGetAll();
     all = await ensureBaseDicts(all);
-    dictPA = all.PA || {};
-    dictVP = all.VP || {};
-    dictNames = all.Names || {};
+    dictPA = normalizeDictObject(all.PA);
+    dictVP = normalizeDictObject(all.VP);
+    dictNames = normalizeDictObject(all.Names);
     dictVPKeys = sortByLenDesc(dictVP);
     dictNamesKeys = sortByLenDesc(dictNames);
     isLoaded = true;
@@ -294,6 +320,7 @@
   }
 
   function translateText(text) {
+    text = fixVietnamese(text);
     if (!text || !text.trim() || !hasHanChar(text)) return text;
     const { ngoac, motnghia, daucach, dichlieu } = settings;
     text = normalizePunct(text);
@@ -356,7 +383,7 @@
 
     let result = postProcessTranslatedText(joinTranslatedTokens(tokens));
     result = autoCapitalize(result);
-    return resolvePlaceholders(result);
+    return fixVietnamese(resolvePlaceholders(result));
   }
 
   const VP_EXCLUDE_IDS = new Set(['_vp_theme_style']);
@@ -496,8 +523,9 @@
       if (_translateSession !== session) return;
       chunkArr.forEach((node, i) => {
         node._vpOrigin = node.textContent;
-        node.textContent = translated[i];
+        node.textContent = fixVietnamese(translated[i]);
         node._vpTranslated = true;
+        node.parentElement?.classList.add('_vp_translated_parent');
       });
 
       if (start + CHUNK_SIZE < arr.length) {
@@ -602,6 +630,7 @@
         }
       }
       for (const n of toRemove) n.remove();
+      node.classList?.remove('_vp_translated_parent');
       if (node.shadowRoot) restore(node.shadowRoot);
     }
 
@@ -699,6 +728,7 @@
   GM_registerMenuCommand('🔄 Làm mới bản dịch', () => restoreAndRetranslate());
 
   (async function init() {
+    injectVietnameseStyle();
     const stored = gmGet('vp_lite_options', null);
     if (stored && typeof stored === 'object') {
       // Chỉ lấy settings không liên quan đến bật/tắt từ storage
