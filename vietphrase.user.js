@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Vietphrase Realtime Translator Lite
 // @namespace    https://github.com/duongden/script-vietphrase-translator
-// @version      2.2.1
+// @version      2.2.2
 // @description  Dịch trực tiếp văn bản Hán ngữ sang tiếng Việt trên mọi trang web bằng từ điển Vietphrase tải từ link GitHub raw.
 // @author       duongden
 // @license      GPL-3.0
