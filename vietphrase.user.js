@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Vietphrase Realtime Translator Lite
 // @namespace    https://github.com/duongden/script-vietphrase-translator
-// @version      2.2.2
+// @version      2.2.3
 // @description  Dịch trực tiếp văn bản Hán ngữ sang tiếng Việt trên mọi trang web bằng từ điển Vietphrase tải từ link GitHub raw.
 // @author       duongden
 // @license      GPL-3.0
@@ -11,6 +11,7 @@
 // @match        *://*/*
 // @grant        GM_getValue
 // @grant        GM_setValue
+// @grant        GM_setClipboard
 // @grant        GM_xmlhttpRequest
 // @grant        GM_registerMenuCommand
 // @connect      raw.githubusercontent.com
@@ -724,8 +725,92 @@
     }
   }
 
+  let _lastSelectionRange = null;
+
+  function rememberSelection() {
+    const selection = window.getSelection();
+    if (!selection || selection.isCollapsed || selection.rangeCount === 0) return;
+    try {
+      _lastSelectionRange = selection.getRangeAt(0).cloneRange();
+    } catch (e) {
+      _lastSelectionRange = null;
+    }
+  }
+
+  function rangeIntersectsTextNode(range, node) {
+    try {
+      return range.intersectsNode(node);
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function getSelectedOffsets(range, node) {
+    const length = (node.textContent || '').length;
+    let start = 0;
+    let end = length;
+    if (range.startContainer === node) start = range.startOffset;
+    if (range.endContainer === node) end = range.endOffset;
+    return {
+      start: Math.max(0, Math.min(start, length)),
+      end: Math.max(0, Math.min(end, length)),
+    };
+  }
+
+  function getSelectedOriginalText() {
+    const selection = window.getSelection();
+    let range = null;
+    if (selection && !selection.isCollapsed && selection.rangeCount > 0) {
+      range = selection.getRangeAt(0).cloneRange();
+    } else if (_lastSelectionRange) {
+      range = _lastSelectionRange.cloneRange();
+    }
+    if (!range || range.collapsed) return '';
+
+    const ancestor = range.commonAncestorContainer;
+    const nodes = [];
+    if (ancestor.nodeType === 3) {
+      nodes.push(ancestor);
+    } else {
+      const walker = document.createTreeWalker(ancestor, NodeFilter.SHOW_TEXT);
+      let current;
+      while ((current = walker.nextNode())) nodes.push(current);
+    }
+
+    const parts = [];
+    for (const node of nodes) {
+      if (rangeIntersectsTextNode(range, node)) {
+        const { start, end } = getSelectedOffsets(range, node);
+        if (end > start) {
+          if (node._vpOrigin) {
+            // Bản dịch và bản gốc không có offset ký tự tương ứng; lấy trọn
+            // text node gốc để không cắt sai chữ Hán.
+            parts.push(node._vpOrigin);
+          } else {
+            parts.push((node.textContent || '').slice(start, end));
+          }
+        }
+      }
+    }
+    return parts.join('').trim();
+  }
+
+  function copyOriginalSelection() {
+    const text = getSelectedOriginalText();
+    if (!text) {
+      console.warn('[VP Lite] Hãy bôi chọn bản dịch trước khi sao chép chữ Hán gốc.');
+      return;
+    }
+    GM_setClipboard(text, 'text');
+  }
+
+  document.addEventListener('mouseup', () => setTimeout(rememberSelection, 0), true);
+  document.addEventListener('keyup', () => setTimeout(rememberSelection, 0), true);
+  document.addEventListener('selectionchange', () => setTimeout(rememberSelection, 0), true);
+
   GM_registerMenuCommand('▶ Dịch trang', () => realtimeTranslate(true));
   GM_registerMenuCommand('🔄 Làm mới bản dịch', () => restoreAndRetranslate());
+  GM_registerMenuCommand('📋 Sao chép chữ Hán gốc', copyOriginalSelection);
 
   (async function init() {
     injectVietnameseStyle();
