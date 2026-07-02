@@ -16,6 +16,8 @@
 // @grant        GM_registerMenuCommand
 // @connect      raw.githubusercontent.com
 // @run-at       document-idle
+// @downloadURL https://github.com/duongden/script-vietphrase-translator/raw/refs/heads/main/vietphrase.user.js
+// @updateURL https://github.com/duongden/script-vietphrase-translator/raw/refs/heads/main/vietphrase.user.js
 // ==/UserScript==
 
 /* jshint esversion:11 */
