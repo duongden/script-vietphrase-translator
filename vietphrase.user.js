@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Vietphrase Realtime Translator Lite
 // @namespace    https://github.com/duongden/script-vietphrase-translator
-// @version      2.2.4
-// @description  Dịch trực tiếp văn bản Hán ngữ sang tiếng Việt trên mọi trang web bằng từ điển Vietphrase tải từ link GitHub raw.
+// @version      2.2.5
+// @description  Dịch trực tiếp văn bản Hán ngữ sang tiếng Việt bằng từ điển mặc định hoặc từ điển cá nhân.
 // @author       duongden
 // @license      GPL-3.0
 // @icon         https://raw.githubusercontent.com/duongden/script-vietphrase-translator/main/icon.png
@@ -11,24 +11,21 @@
 // @match        *://*/*
 // @grant        GM_getValue
 // @grant        GM_setValue
-// @grant        GM_setClipboard
 // @grant        GM_xmlhttpRequest
 // @grant        GM_registerMenuCommand
 // @connect      raw.githubusercontent.com
 // @run-at       document-idle
-// @downloadURL https://github.com/duongden/script-vietphrase-translator/raw/refs/heads/main/vietphrase.user.js
-// @updateURL https://github.com/duongden/script-vietphrase-translator/raw/refs/heads/main/vietphrase.user.js
 // ==/UserScript==
 
 /* jshint esversion:11 */
 (function () {
   'use strict';
 
-  const DB_NAME = 'VietphraseDBLite';
-  const DB_VER = 1;
-  const STORE = 'dicts';
   const CHINESE_RE = /[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\u3007]/;
   const DICH_LIEU_SET = new Set(['的', '了', '着', '著']);
+  const DICT_TYPES = ['PA', 'VP', 'Names'];
+  const DICT_STORAGE_PREFIX = 'vp_lite_dict_';
+  const DICT_META_KEY = 'vp_lite_dict_meta';
   const DEFAULT_DICT_URLS = {
     PA: 'https://raw.githubusercontent.com/duongden/script-vietphrase-translator/refs/heads/main/ChinesePhienAmWords.txt',
     VP: 'https://raw.githubusercontent.com/duongden/script-vietphrase-translator/refs/heads/main/Vietphrase.txt',
@@ -61,7 +58,6 @@
     (document.head || document.documentElement).appendChild(style);
   }
 
-  let _db = null;
   let dictPA = {};
   let dictVP = {};
   let dictNames = {};
@@ -99,7 +95,13 @@
   }
 
   function gmSet(key, val) {
-    try { GM_setValue(key, val); } catch (e) { /* silent */ }
+    try {
+      GM_setValue(key, val);
+      return true;
+    } catch (e) {
+      console.warn(`[VP Lite] Không thể lưu ${key}:`, e);
+      return false;
+    }
   }
 
   function gmFetch(url) {
@@ -117,50 +119,28 @@
     });
   }
 
-  function openDB() {
-    if (_db) return Promise.resolve(_db);
-    return new Promise((resolve, reject) => {
-      const req = indexedDB.open(DB_NAME, DB_VER);
-      req.onupgradeneeded = e => {
-        const db = e.target.result;
-        if (!db.objectStoreNames.contains(STORE)) {
-          db.createObjectStore(STORE, { keyPath: 'name' });
-        }
-      };
-      req.onsuccess = e => { _db = e.target.result; resolve(_db); };
-      req.onerror = e => reject(e.target.error);
-    });
+  function isValidDict(data) {
+    return data && typeof data === 'object' && !Array.isArray(data) && Object.keys(data).length > 0;
   }
 
-  async function dbGet(key) {
-    const db = await openDB();
-    return new Promise((resolve, reject) => {
-      const req = db.transaction(STORE).objectStore(STORE).get(key);
-      req.onsuccess = e => resolve(e.target.result ? e.target.result.data : null);
-      req.onerror = e => reject(e.target.error);
-    });
+  function getStoredDict(dictKey) {
+    const data = gmGet(DICT_STORAGE_PREFIX + dictKey, null);
+    return isValidDict(data) ? data : null;
   }
 
-  async function dbSet(key, data) {
-    const db = await openDB();
-    return new Promise((resolve, reject) => {
-      const req = db.transaction(STORE, 'readwrite').objectStore(STORE).put({ name: key, data });
-      req.onsuccess = () => resolve();
-      req.onerror = e => reject(e.target.error);
-    });
-  }
-
-  async function dbGetAll() {
-    const db = await openDB();
-    return new Promise((resolve, reject) => {
-      const req = db.transaction(STORE).objectStore(STORE).getAll();
-      req.onsuccess = e => {
-        const out = {};
-        for (const item of e.target.result) out[item.name] = item.data;
-        resolve(out);
-      };
-      req.onerror = e => reject(e.target.error);
-    });
+  function saveStoredDict(dictKey, data, source) {
+    if (!isValidDict(data)) throw new Error(`Từ điển ${dictKey} không có mục từ hợp lệ`);
+    if (!gmSet(DICT_STORAGE_PREFIX + dictKey, data)) {
+      throw new Error(`Tampermonkey không thể lưu từ điển ${dictKey}`);
+    }
+    const storedMeta = gmGet(DICT_META_KEY, {});
+    const meta = storedMeta && typeof storedMeta === 'object' ? storedMeta : {};
+    meta[dictKey] = {
+      source,
+      count: Object.keys(data).length,
+      updatedAt: new Date().toISOString(),
+    };
+    gmSet(DICT_META_KEY, meta);
   }
 
   function parseDict(text, mode = '') {
@@ -191,14 +171,18 @@
     return parseDict(text, dictKey === 'PA' ? 'PA' : '');
   }
 
-  async function ensureBaseDicts(all) {
-    const merged = Object.assign({}, (all || {}));
-    const missing = ['PA', 'VP', 'Names'].filter(k => !merged[k] || !Object.keys(merged[k]).length);
+  async function ensureBaseDicts() {
+    const merged = {};
+    for (const key of DICT_TYPES) merged[key] = getStoredDict(key);
+    const missing = DICT_TYPES.filter(key => !merged[key]);
     if (!missing.length) return merged;
 
     const fetched = await Promise.all(missing.map(async key => {
       const parsed = await fetchDefaultDict(key);
-      await dbSet(key, parsed);
+      // Người dùng có thể upload trong lúc request mặc định đang chạy.
+      const current = getStoredDict(key);
+      if (current) return [key, current];
+      saveStoredDict(key, parsed, 'default');
       return [key, parsed];
     }));
 
@@ -207,8 +191,7 @@
   }
 
   async function loadDicts() {
-    let all = await dbGetAll();
-    all = await ensureBaseDicts(all);
+    const all = await ensureBaseDicts();
     dictPA = normalizeDictObject(all.PA);
     dictVP = normalizeDictObject(all.VP);
     dictNames = normalizeDictObject(all.Names);
@@ -389,7 +372,7 @@
     return fixVietnamese(resolvePlaceholders(result));
   }
 
-  const VP_EXCLUDE_IDS = new Set(['_vp_theme_style']);
+  const VP_EXCLUDE_IDS = new Set(['_vp_theme_style', '_vp_dict_manager']);
   const CHUNK_SIZE = 80;
   const VIET_END_RE = /[a-zA-ZÀ-ỹ]$/;
   const VIET_START_RE = /^[a-zA-ZÀ-ỹ]/;
@@ -727,92 +710,106 @@
     }
   }
 
-  let _lastSelectionRange = null;
+  function openDictionaryManager() {
+    document.getElementById('_vp_dict_manager')?.remove();
 
-  function rememberSelection() {
-    const selection = window.getSelection();
-    if (!selection || selection.isCollapsed || selection.rangeCount === 0) return;
-    try {
-      _lastSelectionRange = selection.getRangeAt(0).cloneRange();
-    } catch (e) {
-      _lastSelectionRange = null;
-    }
-  }
+    const overlay = document.createElement('div');
+    overlay.id = '_vp_dict_manager';
+    Object.assign(overlay.style, {
+      position: 'fixed', inset: '0', zIndex: '2147483647', display: 'grid',
+      placeItems: 'center', padding: '16px', background: 'rgba(15, 23, 42, .55)',
+      fontFamily: 'system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif',
+    });
 
-  function rangeIntersectsTextNode(range, node) {
-    try {
-      return range.intersectsNode(node);
-    } catch (e) {
-      return false;
-    }
-  }
+    const panel = document.createElement('div');
+    Object.assign(panel.style, {
+      width: 'min(520px, 100%)', padding: '20px', borderRadius: '14px',
+      background: '#fff', color: '#0f172a', boxShadow: '0 24px 64px rgba(0,0,0,.28)',
+    });
 
-  function getSelectedOffsets(range, node) {
-    const length = (node.textContent || '').length;
-    let start = 0;
-    let end = length;
-    if (range.startContainer === node) start = range.startOffset;
-    if (range.endContainer === node) end = range.endOffset;
-    return {
-      start: Math.max(0, Math.min(start, length)),
-      end: Math.max(0, Math.min(end, length)),
-    };
-  }
+    const title = document.createElement('h2');
+    title.textContent = 'Từ điển cá nhân';
+    Object.assign(title.style, { margin: '0 0 6px', fontSize: '20px' });
+    panel.appendChild(title);
 
-  function getSelectedOriginalText() {
-    const selection = window.getSelection();
-    let range = null;
-    if (selection && !selection.isCollapsed && selection.rangeCount > 0) {
-      range = selection.getRangeAt(0).cloneRange();
-    } else if (_lastSelectionRange) {
-      range = _lastSelectionRange.cloneRange();
-    }
-    if (!range || range.collapsed) return '';
+    const description = document.createElement('p');
+    description.textContent = 'Tải file TXT dạng Hán=Việt. Dữ liệu được Tampermonkey lưu dùng chung cho mọi website.';
+    Object.assign(description.style, { margin: '0 0 16px', color: '#475569', fontSize: '14px', lineHeight: '1.5' });
+    panel.appendChild(description);
 
-    const ancestor = range.commonAncestorContainer;
-    const nodes = [];
-    if (ancestor.nodeType === 3) {
-      nodes.push(ancestor);
-    } else {
-      const walker = document.createTreeWalker(ancestor, NodeFilter.SHOW_TEXT);
-      let current;
-      while ((current = walker.nextNode())) nodes.push(current);
-    }
+    const meta = gmGet(DICT_META_KEY, {});
+    for (const dictKey of DICT_TYPES) {
+      const row = document.createElement('div');
+      Object.assign(row.style, {
+        display: 'grid', gridTemplateColumns: '72px 1fr auto', alignItems: 'center',
+        gap: '10px', padding: '11px 0', borderTop: '1px solid #e2e8f0',
+      });
 
-    const parts = [];
-    for (const node of nodes) {
-      if (rangeIntersectsTextNode(range, node)) {
-        const { start, end } = getSelectedOffsets(range, node);
-        if (end > start) {
-          if (node._vpOrigin) {
-            // Bản dịch và bản gốc không có offset ký tự tương ứng; lấy trọn
-            // text node gốc để không cắt sai chữ Hán.
-            parts.push(node._vpOrigin);
-          } else {
-            parts.push((node.textContent || '').slice(start, end));
-          }
+      const name = document.createElement('strong');
+      name.textContent = dictKey;
+      const status = document.createElement('span');
+      const info = meta && typeof meta === 'object' ? meta[dictKey] : null;
+      const stored = getStoredDict(dictKey);
+      const count = stored ? Object.keys(stored).length : 0;
+      status.textContent = count
+        ? `${count.toLocaleString('vi-VN')} mục · ${info?.source === 'user' ? 'cá nhân' : 'mặc định'}`
+        : 'Chưa có dữ liệu';
+      Object.assign(status.style, { color: '#64748b', fontSize: '13px' });
+
+      const input = document.createElement('input');
+      input.type = 'file';
+      input.accept = '.txt,text/plain';
+      input.hidden = true;
+
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.textContent = 'Tải lên';
+      Object.assign(button.style, {
+        border: '0', borderRadius: '8px', padding: '8px 12px', cursor: 'pointer',
+        background: '#4f46e5', color: '#fff', fontWeight: '600',
+      });
+      button.onclick = () => input.click();
+      input.onchange = async () => {
+        const file = input.files?.[0];
+        if (!file) return;
+        button.disabled = true;
+        status.textContent = 'Đang đọc và lưu…';
+        try {
+          const parsed = parseDict(await file.text(), dictKey === 'PA' ? 'PA' : '');
+          saveStoredDict(dictKey, parsed, 'user');
+          await loadDicts();
+          status.textContent = `${Object.keys(parsed).length.toLocaleString('vi-VN')} mục · cá nhân`;
+          restoreAndRetranslate();
+        } catch (err) {
+          status.textContent = `Lỗi: ${err.message || err}`;
+          console.warn(`[VP Lite] Upload ${dictKey} thất bại:`, err);
+        } finally {
+          button.disabled = false;
+          input.value = '';
         }
-      }
-    }
-    return parts.join('').trim();
-  }
+      };
 
-  function copyOriginalSelection() {
-    const text = getSelectedOriginalText();
-    if (!text) {
-      console.warn('[VP Lite] Hãy bôi chọn bản dịch trước khi sao chép chữ Hán gốc.');
-      return;
+      row.append(name, status, button, input);
+      panel.appendChild(row);
     }
-    GM_setClipboard(text, 'text');
-  }
 
-  document.addEventListener('mouseup', () => setTimeout(rememberSelection, 0), true);
-  document.addEventListener('keyup', () => setTimeout(rememberSelection, 0), true);
-  document.addEventListener('selectionchange', () => setTimeout(rememberSelection, 0), true);
+    const close = document.createElement('button');
+    close.type = 'button';
+    close.textContent = 'Đóng';
+    Object.assign(close.style, {
+      display: 'block', margin: '16px 0 0 auto', border: '1px solid #cbd5e1',
+      borderRadius: '8px', padding: '8px 14px', cursor: 'pointer', background: '#fff', color: '#0f172a',
+    });
+    close.onclick = () => overlay.remove();
+    panel.appendChild(close);
+    overlay.appendChild(panel);
+    overlay.onclick = event => { if (event.target === overlay) overlay.remove(); };
+    (document.body || document.documentElement).appendChild(overlay);
+  }
 
   GM_registerMenuCommand('▶ Dịch trang', () => realtimeTranslate(true));
   GM_registerMenuCommand('🔄 Làm mới bản dịch', () => restoreAndRetranslate());
-  GM_registerMenuCommand('📋 Sao chép chữ Hán gốc', copyOriginalSelection);
+  GM_registerMenuCommand('📚 Từ điển cá nhân', () => openDictionaryManager());
 
   (async function init() {
     injectVietnameseStyle();
