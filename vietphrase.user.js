@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Vietphrase Realtime Translator Lite
 // @namespace    https://github.com/duongden/script-vietphrase-translator
-// @version      2.2.5
+// @version      2.2.6
 // @description  Dịch trực tiếp văn bản Hán ngữ sang tiếng Việt bằng từ điển mặc định hoặc từ điển cá nhân.
 // @author       duongden
 // @license      GPL-3.0
@@ -11,6 +11,7 @@
 // @match        *://*/*
 // @grant        GM_getValue
 // @grant        GM_setValue
+// @grant        GM_setClipboard
 // @grant        GM_xmlhttpRequest
 // @grant        GM_registerMenuCommand
 // @connect      raw.githubusercontent.com
@@ -305,9 +306,9 @@
     return s;
   }
 
-  function translateText(text) {
+  function translateTextWithMap(text) {
     text = fixVietnamese(text);
-    if (!text || !text.trim() || !hasHanChar(text)) return text;
+    if (!text || !text.trim() || !hasHanChar(text)) return { result: text, tokenMap: [] };
     const { ngoac, motnghia, daucach, dichlieu } = settings;
     text = normalizePunct(text);
 
@@ -324,17 +325,17 @@
         if (ngoac) nameVal = '[' + nameVal + ']';
         for (let pi = 0; pi < parts.length; pi++) {
           if (parts[pi].length) nextSegments.push({ text: parts[pi], isName: false });
-          if (pi < parts.length - 1) nextSegments.push({ text: nameVal, isName: true });
+          if (pi < parts.length - 1) nextSegments.push({ text: nameVal, han: name, isName: true });
         }
       }
       segments = nextSegments;
     }
 
-    const tokens = [];
+    const pairs = [];
     const maxLen = dictVPKeys.length ? dictVPKeys[0].length : 1;
 
     for (const seg of segments) {
-      if (seg.isName) { tokens.push(seg.text); continue; }
+      if (seg.isName) { pairs.push({ han: seg.han, viet: seg.text }); continue; }
       const s = seg.text;
       let i = 0;
       while (i < s.length) {
@@ -346,7 +347,7 @@
           if (vp !== undefined) {
             let t = motnghia ? vp.split(daucach)[0].trim() : vp.trim();
             if (ngoac) t = '[' + t + ']';
-            tokens.push(t);
+            pairs.push({ han: sub, viet: t });
             i += j;
             matched = true;
             break;
@@ -357,22 +358,33 @@
         const c = s[i];
         if (!isHanChar(c)) {
           const raw = takeNonHanRun(s, i);
-          if (raw) tokens.push(raw);
+          if (raw) pairs.push({ han: raw, viet: raw });
           i += raw.length || 1;
           continue;
         }
         if (dichlieu && DICH_LIEU_SET.has(c)) { i++; continue; }
-        tokens.push(dictPA[c] || c);
+        pairs.push({ han: c, viet: dictPA[c] || c });
         i++;
       }
     }
 
-    let result = postProcessTranslatedText(joinTranslatedTokens(tokens));
+    let result = postProcessTranslatedText(joinTranslatedTokens(pairs.map(pair => pair.viet)));
+    const tokenMap = [];
+    let searchFrom = 0;
+    for (const pair of pairs) {
+      if (!pair.viet) continue;
+      let start = result.indexOf(pair.viet, searchFrom);
+      if (start < 0) start = result.indexOf(pair.viet);
+      if (start < 0) continue;
+      const end = start + pair.viet.length;
+      tokenMap.push({ han: pair.han, viet: pair.viet, start, end });
+      searchFrom = end;
+    }
     result = autoCapitalize(result);
-    return fixVietnamese(resolvePlaceholders(result));
+    return { result: fixVietnamese(resolvePlaceholders(result)), tokenMap };
   }
 
-  const VP_EXCLUDE_IDS = new Set(['_vp_theme_style', '_vp_dict_manager']);
+  const VP_EXCLUDE_IDS = new Set(['_vp_theme_style', '_vp_dict_manager', '_vp_copy_status']);
   const CHUNK_SIZE = 80;
   const VIET_END_RE = /[a-zA-ZÀ-ỹ]$/;
   const VIET_START_RE = /^[a-zA-ZÀ-ỹ]/;
@@ -504,13 +516,14 @@
       if (_translateSession !== session) return;
       const chunkArr = arr.slice(start, start + CHUNK_SIZE);
       const chunkTexts = texts.slice(start, start + CHUNK_SIZE);
-      const translated = chunkTexts.map(text => translateText(text));
+      const translated = chunkTexts.map(text => translateTextWithMap(text));
 
       if (_translateSession !== session) return;
       chunkArr.forEach((node, i) => {
         node._vpOrigin = node.textContent;
-        node.textContent = fixVietnamese(translated[i]);
+        node.textContent = fixVietnamese(translated[i].result);
         node._vpTranslated = true;
+        node._vpTokenMap = translated[i].tokenMap;
         node.parentElement?.classList.add('_vp_translated_parent');
       });
 
@@ -611,6 +624,7 @@
           child.textContent = child._vpOrigin;
           child._vpOrigin = undefined;
           child._vpTranslated = false;
+          child._vpTokenMap = undefined;
         } else if (child.nodeType === 1) {
           restore(child);
         }
@@ -707,6 +721,126 @@
         else if (fontSize >= 16) multiply = 2;
         e.style.fontSize = Math.max(10, fontSize - multiply) + 'px';
       });
+    }
+  }
+
+  function getTokenRanges(node) {
+    if (!node || node.nodeType !== 3) return [];
+    const textLength = (node.textContent || '').length;
+    return (Array.isArray(node._vpTokenMap) ? node._vpTokenMap : []).filter(token =>
+      token && token.han && Number.isFinite(token.start) && Number.isFinite(token.end) &&
+      token.start >= 0 && token.end > token.start && token.end <= textLength
+    );
+  }
+
+  function getSelectedHanFromNode(node, startOffset, endOffset) {
+    const text = node.textContent || '';
+    const start = Math.max(0, Math.min(startOffset, text.length));
+    const end = Math.max(start, Math.min(endOffset, text.length));
+    if (end <= start) return '';
+
+    if (!node._vpOrigin) {
+      const selected = text.slice(start, end);
+      return hasHanChar(selected) ? selected : '';
+    }
+
+    const ranges = getTokenRanges(node);
+    const picked = ranges.filter(token => token.end > start && token.start < end);
+    if (picked.length) return picked.map(token => token.han).join('');
+    if (start === 0 && end === text.length) return node._vpOrigin;
+    return '';
+  }
+
+  function getRangeOffsets(range, node) {
+    try {
+      const nodeRange = document.createRange();
+      nodeRange.selectNodeContents(node);
+      if (range.compareBoundaryPoints(Range.END_TO_START, nodeRange) <= 0 ||
+          range.compareBoundaryPoints(Range.START_TO_END, nodeRange) >= 0) return null;
+      let start = 0;
+      let end = (node.textContent || '').length;
+      if (range.startContainer === node) start = range.startOffset;
+      if (range.endContainer === node) end = range.endOffset;
+      return { start, end };
+    } catch (_) {
+      return null;
+    }
+  }
+
+  let lastSelectionRange = null;
+  function snapshotSelection() {
+    const selection = window.getSelection();
+    if (!selection || selection.isCollapsed || selection.rangeCount === 0) return;
+    try { lastSelectionRange = selection.getRangeAt(0).cloneRange(); } catch (_) { /* ignored */ }
+  }
+
+  document.addEventListener('selectionchange', () => setTimeout(snapshotSelection, 0), true);
+  document.addEventListener('mouseup', () => setTimeout(snapshotSelection, 0), true);
+  document.addEventListener('keyup', event => {
+    if (event.key === 'Shift' || event.key.startsWith('Arrow')) setTimeout(snapshotSelection, 0);
+  }, true);
+
+  function extractSelectedHan() {
+    const selection = window.getSelection();
+    let range = null;
+    if (selection && !selection.isCollapsed && selection.rangeCount > 0) {
+      range = selection.getRangeAt(0).cloneRange();
+      lastSelectionRange = range.cloneRange();
+    } else if (lastSelectionRange) {
+      range = lastSelectionRange.cloneRange();
+    }
+    if (!range) return '';
+
+    const root = range.commonAncestorContainer.nodeType === 1
+      ? range.commonAncestorContainer
+      : range.commonAncestorContainer.parentElement;
+    if (!root) return '';
+
+    const parts = [];
+    if (range.startContainer === range.endContainer && range.startContainer.nodeType === 3) {
+      return getSelectedHanFromNode(range.startContainer, range.startOffset, range.endOffset).trim();
+    }
+
+    const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    let node;
+    while ((node = walker.nextNode())) {
+      if (node._vpSpaceNode) continue;
+      const offsets = getRangeOffsets(range, node);
+      if (!offsets) continue;
+      const han = getSelectedHanFromNode(node, offsets.start, offsets.end);
+      if (han) parts.push(han);
+    }
+    return parts.join('').trim();
+  }
+
+  function showCopyStatus(message, isError = false) {
+    document.getElementById('_vp_copy_status')?.remove();
+    const status = document.createElement('div');
+    status.id = '_vp_copy_status';
+    status.textContent = message;
+    Object.assign(status.style, {
+      position: 'fixed', right: '16px', bottom: '16px', zIndex: '2147483647',
+      padding: '10px 14px', borderRadius: '9px', color: '#fff',
+      background: isError ? '#dc2626' : '#059669', font: '600 13px system-ui, sans-serif',
+      boxShadow: '0 8px 24px rgba(0,0,0,.24)',
+    });
+    (document.body || document.documentElement).appendChild(status);
+    setTimeout(() => status.remove(), 2200);
+  }
+
+  function copyOriginalHan() {
+    const han = extractSelectedHan();
+    if (!han) {
+      showCopyStatus('Hãy chọn phần văn bản đã dịch cần sao chép.', true);
+      return;
+    }
+    try {
+      GM_setClipboard(han, 'text');
+      showCopyStatus('Đã sao chép chữ Hán gốc.');
+    } catch (_) {
+      navigator.clipboard.writeText(han)
+        .then(() => showCopyStatus('Đã sao chép chữ Hán gốc.'))
+        .catch(() => showCopyStatus('Không thể ghi vào clipboard.', true));
     }
   }
 
@@ -809,6 +943,7 @@
 
   GM_registerMenuCommand('▶ Dịch trang', () => realtimeTranslate(true));
   GM_registerMenuCommand('🔄 Làm mới bản dịch', () => restoreAndRetranslate());
+  GM_registerMenuCommand('📋 Sao chép chữ Hán gốc', () => copyOriginalHan());
   GM_registerMenuCommand('📚 Từ điển cá nhân', () => openDictionaryManager());
 
   (async function init() {
