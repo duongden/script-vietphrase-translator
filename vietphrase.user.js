@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Vietphrase Realtime Translator Lite
 // @namespace    https://github.com/duongden/script-vietphrase-translator
-// @version      2.2.6
+// @version      2.2.7
 // @description  Dịch trực tiếp văn bản Hán ngữ sang tiếng Việt bằng từ điển mặc định hoặc từ điển cá nhân.
 // @author       duongden
 // @license      GPL-3.0
@@ -369,19 +369,23 @@
     }
 
     let result = postProcessTranslatedText(joinTranslatedTokens(pairs.map(pair => pair.viet)));
+    result = fixVietnamese(resolvePlaceholders(autoCapitalize(result)));
+
     const tokenMap = [];
+    const searchableResult = result.toLocaleLowerCase('vi-VN');
     let searchFrom = 0;
     for (const pair of pairs) {
       if (!pair.viet) continue;
-      let start = result.indexOf(pair.viet, searchFrom);
-      if (start < 0) start = result.indexOf(pair.viet);
+      const displayViet = fixVietnamese(resolvePlaceholders(pair.viet));
+      const searchableViet = displayViet.toLocaleLowerCase('vi-VN');
+      let start = searchableResult.indexOf(searchableViet, searchFrom);
+      if (start < 0) start = searchableResult.indexOf(searchableViet);
       if (start < 0) continue;
-      const end = start + pair.viet.length;
-      tokenMap.push({ han: pair.han, viet: pair.viet, start, end });
+      const end = start + displayViet.length;
+      tokenMap.push({ han: pair.han, viet: result.slice(start, end), start, end });
       searchFrom = end;
     }
-    result = autoCapitalize(result);
-    return { result: fixVietnamese(resolvePlaceholders(result)), tokenMap };
+    return { result, tokenMap };
   }
 
   const VP_EXCLUDE_IDS = new Set(['_vp_theme_style', '_vp_dict_manager', '_vp_copy_status']);
@@ -751,56 +755,46 @@
     return '';
   }
 
-  function getRangeOffsets(range, node) {
+  function rangeIntersectsTextNode(range, node) {
+    if (!range || !node || node.nodeType !== 3) return false;
     try {
+      if (typeof range.intersectsNode === 'function') return range.intersectsNode(node);
       const nodeRange = document.createRange();
       nodeRange.selectNodeContents(node);
-      if (range.compareBoundaryPoints(Range.END_TO_START, nodeRange) <= 0 ||
-          range.compareBoundaryPoints(Range.START_TO_END, nodeRange) >= 0) return null;
-      let start = 0;
-      let end = (node.textContent || '').length;
-      if (range.startContainer === node) start = range.startOffset;
-      if (range.endContainer === node) end = range.endOffset;
-      return { start, end };
+      return !(range.compareBoundaryPoints(Range.START_TO_END, nodeRange) > 0 ||
+               range.compareBoundaryPoints(Range.END_TO_START, nodeRange) < 0);
     } catch (_) {
-      return null;
+      return false;
     }
+  }
+
+  function getRangeOffsets(range, node) {
+    if (!rangeIntersectsTextNode(range, node)) return null;
+    const textLength = (node.textContent || '').length;
+    let start = 0;
+    let end = textLength;
+    if (range.startContainer === node) start = range.startOffset;
+    if (range.endContainer === node) end = range.endOffset;
+    start = Math.max(0, Math.min(start, textLength));
+    end = Math.max(start, Math.min(end, textLength));
+    return { start, end };
   }
 
   let lastSelectionRange = null;
-  function snapshotSelection() {
-    const selection = window.getSelection();
-    if (!selection || selection.isCollapsed || selection.rangeCount === 0) return;
-    try { lastSelectionRange = selection.getRangeAt(0).cloneRange(); } catch (_) { /* ignored */ }
-  }
+  let lastSelectedHan = '';
 
-  document.addEventListener('selectionchange', () => setTimeout(snapshotSelection, 0), true);
-  document.addEventListener('mouseup', () => setTimeout(snapshotSelection, 0), true);
-  document.addEventListener('keyup', event => {
-    if (event.key === 'Shift' || event.key.startsWith('Arrow')) setTimeout(snapshotSelection, 0);
-  }, true);
-
-  function extractSelectedHan() {
-    const selection = window.getSelection();
-    let range = null;
-    if (selection && !selection.isCollapsed && selection.rangeCount > 0) {
-      range = selection.getRangeAt(0).cloneRange();
-      lastSelectionRange = range.cloneRange();
-    } else if (lastSelectionRange) {
-      range = lastSelectionRange.cloneRange();
-    }
-    if (!range) return '';
-
+  function extractHanFromRange(range) {
+    if (!range || range.collapsed) return '';
     const root = range.commonAncestorContainer.nodeType === 1
       ? range.commonAncestorContainer
       : range.commonAncestorContainer.parentElement;
     if (!root) return '';
 
-    const parts = [];
     if (range.startContainer === range.endContainer && range.startContainer.nodeType === 3) {
       return getSelectedHanFromNode(range.startContainer, range.startOffset, range.endOffset).trim();
     }
 
+    const parts = [];
     const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
     let node;
     while ((node = walker.nextNode())) {
@@ -811,6 +805,43 @@
       if (han) parts.push(han);
     }
     return parts.join('').trim();
+  }
+
+  function snapshotSelection() {
+    const selection = window.getSelection();
+    if (!selection || selection.isCollapsed || selection.rangeCount === 0) return;
+    try {
+      lastSelectionRange = selection.getRangeAt(0).cloneRange();
+      lastSelectedHan = extractHanFromRange(lastSelectionRange);
+    } catch (_) { /* ignored */ }
+  }
+
+  document.addEventListener('selectionchange', () => setTimeout(snapshotSelection, 0), true);
+  document.addEventListener('mouseup', () => setTimeout(snapshotSelection, 0), true);
+  document.addEventListener('keyup', event => {
+    if (event.key === 'Shift' || event.key.startsWith('Arrow')) setTimeout(snapshotSelection, 0);
+  }, true);
+
+  function extractSelectedHan() {
+    const selection = window.getSelection();
+    if (selection && !selection.isCollapsed && selection.rangeCount > 0) {
+      try {
+        lastSelectionRange = selection.getRangeAt(0).cloneRange();
+        lastSelectedHan = extractHanFromRange(lastSelectionRange);
+        return lastSelectedHan;
+      } catch (_) { /* use cached selection below */ }
+    }
+
+    if (lastSelectionRange) {
+      try {
+        const han = extractHanFromRange(lastSelectionRange);
+        if (han) {
+          lastSelectedHan = han;
+          return han;
+        }
+      } catch (_) { /* use cached Han below */ }
+    }
+    return lastSelectedHan;
   }
 
   function showCopyStatus(message, isError = false) {
