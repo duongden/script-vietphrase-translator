@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Vietphrase Realtime Translator Lite
 // @namespace    https://github.com/duongden/script-vietphrase-translator
-// @version      2.2.7
+// @version      2.2.8
 // @description  Dịch trực tiếp văn bản Hán ngữ sang tiếng Việt bằng từ điển mặc định hoặc từ điển cá nhân.
 // @author       duongden
 // @license      GPL-3.0
@@ -64,6 +64,8 @@
   let dictNames = {};
   let dictVPKeys = [];
   let dictNamesKeys = [];
+  let dictVPMaxLen = 1;
+  let dictNamesMaxLen = 0;
   let isLoaded = false;
 
   const settings = {
@@ -198,6 +200,8 @@
     dictNames = normalizeDictObject(all.Names);
     dictVPKeys = sortByLenDesc(dictVP);
     dictNamesKeys = sortByLenDesc(dictNames);
+    dictVPMaxLen = dictVPKeys.length ? dictVPKeys[0].length : 1;
+    dictNamesMaxLen = dictNamesKeys.length ? dictNamesKeys[0].length : 0;
     isLoaded = true;
     console.log(`[VP Lite] PA=${Object.keys(dictPA).length} VP=${dictVPKeys.length} Names=${dictNamesKeys.length}`);
   }
@@ -306,33 +310,57 @@
     return s;
   }
 
+  function takeNameSegments(text) {
+    if (!dictNamesMaxLen) return [{ text, isName: false }];
+    const segments = [];
+    let plainStart = 0;
+    let i = 0;
+
+    while (i < text.length) {
+      let name = '';
+      const remaining = text.length - i;
+      for (let len = Math.min(dictNamesMaxLen, remaining); len > 0; len--) {
+        const candidate = text.slice(i, i + len);
+        if (dictNames[candidate] !== undefined) {
+          name = candidate;
+          break;
+        }
+      }
+
+      if (!name) {
+        i++;
+        continue;
+      }
+
+      if (plainStart < i) {
+        segments.push({ text: text.slice(plainStart, i), isName: false });
+      }
+      let nameVal = dictNames[name];
+      nameVal = settings.motnghia
+        ? nameVal.split(settings.daucach)[0].trim()
+        : nameVal.trim();
+      if (settings.ngoac) nameVal = '[' + nameVal + ']';
+      segments.push({ text: nameVal, han: name, isName: true });
+      i += name.length;
+      plainStart = i;
+    }
+
+    if (plainStart < text.length) {
+      segments.push({ text: text.slice(plainStart), isName: false });
+    }
+    return segments;
+  }
+
   function translateTextWithMap(text) {
     text = fixVietnamese(text);
     if (!text || !text.trim() || !hasHanChar(text)) return { result: text, tokenMap: [] };
     const { ngoac, motnghia, daucach, dichlieu } = settings;
     text = normalizePunct(text);
 
-    let segments = [{ text, isName: false }];
-    for (const name of dictNamesKeys) {
-      if (!name) continue;
-      const nextSegments = [];
-      for (const seg of segments) {
-        if (seg.isName) { nextSegments.push(seg); continue; }
-        const parts = seg.text.split(name);
-        if (parts.length === 1) { nextSegments.push(seg); continue; }
-        let nameVal = dictNames[name];
-        nameVal = motnghia ? nameVal.split(daucach)[0].trim() : nameVal.trim();
-        if (ngoac) nameVal = '[' + nameVal + ']';
-        for (let pi = 0; pi < parts.length; pi++) {
-          if (parts[pi].length) nextSegments.push({ text: parts[pi], isName: false });
-          if (pi < parts.length - 1) nextSegments.push({ text: nameVal, han: name, isName: true });
-        }
-      }
-      segments = nextSegments;
-    }
+    const segments = takeNameSegments(text);
 
     const pairs = [];
-    const maxLen = dictVPKeys.length ? dictVPKeys[0].length : 1;
+    const maxLen = dictVPMaxLen;
 
     for (const seg of segments) {
       if (seg.isName) { pairs.push({ han: seg.han, viet: seg.text }); continue; }
@@ -369,21 +397,20 @@
     }
 
     let result = postProcessTranslatedText(joinTranslatedTokens(pairs.map(pair => pair.viet)));
-    result = fixVietnamese(resolvePlaceholders(autoCapitalize(result)));
-
     const tokenMap = [];
-    const searchableResult = result.toLocaleLowerCase('vi-VN');
     let searchFrom = 0;
     for (const pair of pairs) {
       if (!pair.viet) continue;
-      const displayViet = fixVietnamese(resolvePlaceholders(pair.viet));
-      const searchableViet = displayViet.toLocaleLowerCase('vi-VN');
-      let start = searchableResult.indexOf(searchableViet, searchFrom);
-      if (start < 0) start = searchableResult.indexOf(searchableViet);
+      let start = result.indexOf(pair.viet, searchFrom);
+      if (start < 0) start = result.indexOf(pair.viet);
       if (start < 0) continue;
-      const end = start + displayViet.length;
-      tokenMap.push({ han: pair.han, viet: result.slice(start, end), start, end });
+      const end = start + pair.viet.length;
+      tokenMap.push({ han: pair.han, viet: pair.viet, start, end });
       searchFrom = end;
+    }
+    result = fixVietnamese(resolvePlaceholders(autoCapitalize(result)));
+    for (const token of tokenMap) {
+      token.viet = result.slice(token.start, token.end);
     }
     return { result, tokenMap };
   }
@@ -755,65 +782,60 @@
     return '';
   }
 
-  function rangeIntersectsTextNode(range, node) {
-    if (!range || !node || node.nodeType !== 3) return false;
+  function getRangeOffsets(range, node) {
     try {
-      if (typeof range.intersectsNode === 'function') return range.intersectsNode(node);
       const nodeRange = document.createRange();
       nodeRange.selectNodeContents(node);
-      return !(range.compareBoundaryPoints(Range.START_TO_END, nodeRange) > 0 ||
-               range.compareBoundaryPoints(Range.END_TO_START, nodeRange) < 0);
+      if (range.compareBoundaryPoints(Range.END_TO_START, nodeRange) <= 0 ||
+          range.compareBoundaryPoints(Range.START_TO_END, nodeRange) >= 0) return null;
+      let start = 0;
+      let end = (node.textContent || '').length;
+      if (range.startContainer === node) start = range.startOffset;
+      if (range.endContainer === node) end = range.endOffset;
+      return { start, end };
     } catch (_) {
-      return false;
+      return null;
     }
   }
 
-  function getRangeOffsets(range, node) {
-    if (!rangeIntersectsTextNode(range, node)) return null;
-    const textLength = (node.textContent || '').length;
-    let start = 0;
-    let end = textLength;
-    if (range.startContainer === node) start = range.startOffset;
-    if (range.endContainer === node) end = range.endOffset;
-    start = Math.max(0, Math.min(start, textLength));
-    end = Math.max(start, Math.min(end, textLength));
-    return { start, end };
-  }
-
-  let lastSelectionRange = null;
-  let lastSelectedHan = '';
-
   function extractHanFromRange(range) {
     if (!range || range.collapsed) return '';
+    if (range.startContainer === range.endContainer && range.startContainer.nodeType === 3) {
+      return getSelectedHanFromNode(
+        range.startContainer,
+        range.startOffset,
+        range.endOffset
+      ).trim();
+    }
+
     const root = range.commonAncestorContainer.nodeType === 1
       ? range.commonAncestorContainer
       : range.commonAncestorContainer.parentElement;
     if (!root) return '';
-
-    if (range.startContainer === range.endContainer && range.startContainer.nodeType === 3) {
-      return getSelectedHanFromNode(range.startContainer, range.startOffset, range.endOffset).trim();
-    }
 
     const parts = [];
     const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
     let node;
     while ((node = walker.nextNode())) {
       if (node._vpSpaceNode) continue;
-      const offsets = getRangeOffsets(range, node);
-      if (!offsets) continue;
-      const han = getSelectedHanFromNode(node, offsets.start, offsets.end);
+      if (typeof range.intersectsNode === 'function' && !range.intersectsNode(node)) continue;
+
+      let start = 0;
+      let end = (node.textContent || '').length;
+      if (range.startContainer === node) start = range.startOffset;
+      if (range.endContainer === node) end = range.endOffset;
+
+      const han = getSelectedHanFromNode(node, start, end);
       if (han) parts.push(han);
     }
     return parts.join('').trim();
   }
 
+  let lastSelectionRange = null;
   function snapshotSelection() {
     const selection = window.getSelection();
     if (!selection || selection.isCollapsed || selection.rangeCount === 0) return;
-    try {
-      lastSelectionRange = selection.getRangeAt(0).cloneRange();
-      lastSelectedHan = extractHanFromRange(lastSelectionRange);
-    } catch (_) { /* ignored */ }
+    try { lastSelectionRange = selection.getRangeAt(0).cloneRange(); } catch (_) { /* ignored */ }
   }
 
   document.addEventListener('selectionchange', () => setTimeout(snapshotSelection, 0), true);
@@ -824,24 +846,16 @@
 
   function extractSelectedHan() {
     const selection = window.getSelection();
+    let range = null;
     if (selection && !selection.isCollapsed && selection.rangeCount > 0) {
-      try {
-        lastSelectionRange = selection.getRangeAt(0).cloneRange();
-        lastSelectedHan = extractHanFromRange(lastSelectionRange);
-        return lastSelectedHan;
-      } catch (_) { /* use cached selection below */ }
+      range = selection.getRangeAt(0).cloneRange();
+      lastSelectionRange = range.cloneRange();
+    } else if (lastSelectionRange) {
+      range = lastSelectionRange.cloneRange();
     }
+    if (!range) return '';
 
-    if (lastSelectionRange) {
-      try {
-        const han = extractHanFromRange(lastSelectionRange);
-        if (han) {
-          lastSelectedHan = han;
-          return han;
-        }
-      } catch (_) { /* use cached Han below */ }
-    }
-    return lastSelectedHan;
+    return extractHanFromRange(range);
   }
 
   function showCopyStatus(message, isError = false) {
