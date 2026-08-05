@@ -948,7 +948,6 @@
 兑=đoái
 兒=nhi
 兓=tán
-兔=thỏ
 兕=hủy
 兖=duyện
 兗=duyện
@@ -6119,7 +6118,7 @@
 榱=suy
 榲=ốt
 榳=đàm
-榴=lưu
+榴=lưu/lựu
 榵=bánh
 榶=đường
 榷=các
@@ -6767,7 +6766,6 @@
 泱=ương
 泲=tể
 泳=vịnh
-泵=bơm
 泶=hạc
 泷=lang
 泸=lư
@@ -11167,7 +11165,6 @@
 觿=huề
 言=ngôn
 訂=đính
-訃=remote
 訇=oanh
 計=kế
 訊=tấn
@@ -11246,7 +11243,6 @@
 誌=chí
 認=nhận
 誑=cuống
-誒=hey
 誓=thệ
 誕=đản
 誖=bội
@@ -12573,7 +12569,6 @@
 鉸=giảo
 鉼=bính
 銀=ngân
-銃=súng
 銅=đồng
 銊=việt
 銋=nhâm
@@ -12638,7 +12633,6 @@
 錦=cẩm
 錧=quản
 錨=miêu
-錫=connect
 錮=cố
 錯=thác
 録=lục
@@ -14250,7 +14244,6 @@
 鸚=anh
 鸛=quán
 鸜=cù
-鸝=the
 鸞=loan
 鸟=điểu
 鸠=cưu
@@ -14364,7 +14357,6 @@
 麦=mạch
 麨=siêu
 麩=phu
-麪=mian3
 麫=miến
 麯=khúc
 麰=mâu
@@ -15314,7 +15306,6 @@
 鮤=liệt
 鮨=nghễ
 鯋=sa
-鯱=shachi
 鯻=lạt
 鰊=liễm
 鰏=bức
@@ -15362,7 +15353,6 @@
 鵐=vu
 鵞=nga
 鵟=cuồng
-鵺=nue
 鶄=kinh
 鶆=lai
 鶋=cư
@@ -15444,14 +15434,11 @@
 嗧=gia-luân
 嗿=thàm
 嚩=phọc
-嚿=嚿
 堒=kun
 壭=kwukyel
 婐=ỏa
 嫨=nần
 岼=yuri
-忯=thi5
-恅=恅
 慪=ẩu
 懚=ẩn
 挬=vót
@@ -15460,7 +15447,6 @@
 撜=chửng
 攰=quặm
 槏=hèm
-橎=fǎn
 毟=mushiritoru
 沺=điền
 泘=hô
@@ -15733,7 +15719,6 @@
 珸=ngô
 珻=mai
 琋=hi
-琓=琓
 琗=tối
 琠=chấn
 瑃=xuân
@@ -15874,7 +15859,6 @@
 祌=trọng
 祑=trật
 祙=mị
-祡=祡
 祪=quỷ
 祹=táo
 禃=thực
@@ -16474,7 +16458,6 @@
 趭=tiếu
 趮=táo
 跇=sế
-跓=跓
 跘=phán
 跾=thúc
 跿=đồ
@@ -16487,7 +16470,6 @@
 踒=oa
 踓=thúc
 踕=tiệp
-踗=踗
 踤=tột
 踨=tung
 踲=độn
@@ -16632,7 +16614,6 @@
 錵=hỏa
 鍀=đắc
 鍁=hân
-鍂=phiến
 鍄=kiềng
 鍉=thi
 鍓=cơ
@@ -17088,3 +17069,20 @@
 鮸=miễn
 埦=oản
 玊=túc
+兔=thố
+鍂=phiến
+踗=niết
+跓=trú
+祡=sài
+琓=hoàn
+橎=phàn
+恅=lão
+忯=kỳ
+鵺=dạ
+麪=miến
+鸝=li
+錫=tích
+銃=súng
+誒=ái
+訃=phó
+泵=bơm
