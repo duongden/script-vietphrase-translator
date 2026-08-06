@@ -4,8 +4,8 @@ Công cụ dịch nội dung tiếng Trung trên trang web sang tiếng Việt b
 
 Có hai phiên bản:
 
-- **Chrome Extension 2.1.9**: đầy đủ tính năng, phù hợp khi dùng từ điển lớn.
-- **Userscript 2.2.8**: cài qua Tampermonkey hoặc Violentmonkey.
+- **Chrome Extension 2.2.0 Rule Engine**: bản build đã obfuscate cho Chrome và Firefox.
+- **Userscript 2.3.0 Rule Engine**: cài qua Tampermonkey hoặc Violentmonkey.
 
 > Không nên bật Extension và Userscript cùng lúc vì trang web có thể bị dịch hai lần.
 
@@ -14,10 +14,10 @@ Có hai phiên bản:
 1. Giải nén file:
 
    ```text
-   vietphrase-ext-v2.1.9.zip
+   vietphrase-ext-v2.2.0.zip
    ```
 
-   Hoặc sử dụng trực tiếp thư mục `dist/`.
+   Với Firefox, sử dụng `vietphrase-ext-firefox-v2.2.0.zip`.
 
 2. Mở Chrome và truy cập:
 
@@ -73,6 +73,15 @@ Trong popup, chọn file TXT tương ứng với:
 - `PA`: phiên âm từng chữ Hán.
 - `VP`: từ điển Vietphrase.
 - `Names`: tên người, địa danh và tên riêng.
+- `Pronouns`: đại từ, chức danh và cách xưng hô dùng bởi token `<pn>`.
+- `Rules`: quy tắc QuickTranslate như `<n:1-4>倍=gấp {0} lần`.
+
+Extension tự tải các nguồn mặc định sau nếu chưa có dữ liệu cục bộ:
+
+- [Pronouns.txt](https://raw.githubusercontent.com/duongden/script-vietphrase-translator/refs/heads/main/Pronouns.txt)
+- [rule.txt](https://raw.githubusercontent.com/duongden/script-vietphrase-translator/refs/heads/main/rule.txt)
+
+File người dùng upload sẽ thay thế nguồn mặc định tương ứng. Có thể bật hoặc tắt Rule Engine bằng công tắc **Áp dụng Rule.txt** trong popup.
 
 File từ điển phải có định dạng:
 
@@ -98,7 +107,7 @@ Userscript yêu cầu Tampermonkey hoặc Violentmonkey.
 4. Mở file:
 
    ```text
-   dist-userscript/vietphrase.user.js
+   vietphrase.user.js
    ```
 
 5. Dán toàn bộ nội dung file vào trình chỉnh sửa.
@@ -107,18 +116,19 @@ Userscript yêu cầu Tampermonkey hoặc Violentmonkey.
 
 ## Sử dụng Userscript
 
-Mở menu của Tampermonkey hoặc Violentmonkey để dùng bốn lệnh:
+Mở menu của Tampermonkey hoặc Violentmonkey để dùng năm lệnh:
 
 - **Dịch trang**: dịch nội dung hiện tại.
 - **Làm mới bản dịch**: khôi phục chữ Hán và dịch lại.
 - **Sao chép chữ Hán gốc**: sao chép chữ Hán tương ứng với phần tiếng Việt đang chọn.
-- **Từ điển cá nhân**: upload từ điển `PA`, `VP` hoặc `Names`.
+- **Từ điển cá nhân**: upload `PA`, `VP`, `Names`, `Pronouns` hoặc `Rules`.
+- **Bật / tắt Rule.txt**: đổi trạng thái Rule Engine và dịch lại trang.
 
 ### Upload từ điển cá nhân
 
 1. Mở menu userscript.
 2. Chọn **Từ điển cá nhân**.
-3. Chọn `PA`, `VP` hoặc `Names`.
+3. Chọn `PA`, `VP`, `Names`, `Pronouns` hoặc `Rules`.
 4. Upload file TXT có định dạng `Hán=Việt`.
 
 File cá nhân sẽ thay thế toàn bộ bộ từ điển tương ứng. Userscript chỉ tải lại từ điển mặc định khi bộ đó chưa có dữ liệu.
@@ -147,8 +157,8 @@ Bộ từ điển Vietphrase có thể rất lớn nên lần tải đầu tiên
 
 ## Phiên bản
 
-- Chrome Extension: `2.1.9`
-- Userscript: `2.2.8`
+- Chrome Extension Rule Engine: `2.2.0`
+- Userscript Rule Engine: `2.3.0`
 
 ## License
 

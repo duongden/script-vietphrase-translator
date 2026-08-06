@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Vietphrase Realtime Translator Lite
 // @namespace    https://github.com/duongden/script-vietphrase-translator
-// @version      2.2.8
+// @version      2.3.0
 // @description  Dịch trực tiếp văn bản Hán ngữ sang tiếng Việt bằng từ điển mặc định hoặc từ điển cá nhân.
 // @author       duongden
 // @license      GPL-3.0
@@ -19,18 +19,407 @@
 // ==/UserScript==
 
 /* jshint esversion:11 */
+/* Vietphrase QuickTranslate-compatible rule engine. */
+(function (root, factory) {
+  const api = factory();
+  if (typeof module === 'object' && module.exports) module.exports = api;
+  root.VPRuleEngine = api;
+})(typeof globalThis !== 'undefined' ? globalThis : this, function () {
+  'use strict';
+
+  const NUM_DIGITS = Object.freeze({
+    '零': 0, '〇': 0, '○': 0, '〇': 0,
+    '一': 1, '二': 2, '两': 2, '兩': 2, '三': 3, '四': 4,
+    '五': 5, '六': 6, '七': 7, '八': 8, '九': 9
+  });
+  const SMALL_UNITS = Object.freeze({ '十': 10, '百': 100, '千': 1000 });
+  const LARGE_UNITS = Object.freeze({ '万': 10000, '萬': 10000, '亿': 100000000, '億': 100000000 });
+  const NUMERIC_RE = /^[0-9零〇○一二两兩三四五六七八九十百千万萬亿億]+/;
+  const YEAR_RE = /^[0-9零〇○一二两兩三四五六七八九]+/;
+  const NUMERIC_CHAR_RE = /[0-9零〇○一二两兩三四五六七八九十百千万萬亿億]/;
+  const NUMERIC_GROUP_SEPARATOR_RE = /[,，]/;
+  const LABELS = Object.freeze({
+    '章': 'Chương', '卷': 'Quyển', '集': 'Tập', '节': 'Tiết',
+    '節': 'Tiết', '幕': 'Màn', '回': 'Hồi', '折': 'Chiết'
+  });
+  const COMMON_ANCHORS = new Set('的了是不在');
+
+  function firstMeaning(value, separator) {
+    const text = String(value == null ? '' : value);
+    const separators = [separator || '/', '¦'];
+    let end = text.length;
+    for (const sep of separators) {
+      if (!sep) continue;
+      const at = text.indexOf(sep);
+      if (at >= 0 && at < end) end = at;
+    }
+    return text.slice(0, end).trim();
+  }
+
+  function digitOf(ch) {
+    if (/[0-9]/.test(ch)) return Number(ch);
+    return Object.prototype.hasOwnProperty.call(NUM_DIGITS, ch) ? NUM_DIGITS[ch] : null;
+  }
+
+  function yearToLatin(raw) {
+    let out = '';
+    for (const ch of raw) {
+      const digit = digitOf(ch);
+      if (digit == null) return null;
+      out += digit;
+    }
+    return out;
+  }
+
+  function chineseToLatin(raw) {
+    if (/^[0-9]+$/.test(raw)) return String(Number(raw));
+    if (!/[十百千万萬亿億]/.test(raw)) return yearToLatin(raw);
+    let total = 0;
+    let section = 0;
+    let number = 0;
+    let saw = false;
+    for (const ch of raw) {
+      const digit = digitOf(ch);
+      if (digit != null) {
+        number = digit;
+        saw = true;
+        continue;
+      }
+      const small = SMALL_UNITS[ch];
+      if (small) {
+        section += (number || 1) * small;
+        number = 0;
+        saw = true;
+        continue;
+      }
+      const large = LARGE_UNITS[ch];
+      if (large) {
+        section += number;
+        total += (section || 1) * large;
+        section = 0;
+        number = 0;
+        saw = true;
+        continue;
+      }
+      return null;
+    }
+    return saw ? String(total + section + number) : null;
+  }
+
+  function parseRange(raw, defaultMax) {
+    if (!raw) return { min: 1, max: defaultMax };
+    const match = /^(\d+)(?:-(\d+))?$/.exec(raw);
+    if (!match) throw new Error('range không hợp lệ');
+    const min = Number(match[1]);
+    const max = Number(match[2] || match[1]);
+    if (min < 1 || max < min || max > 64) throw new Error('range không hợp lệ');
+    return { min, max };
+  }
+
+  function parseCapture(raw) {
+    const split = raw.split(':');
+    if (split.length > 2) throw new Error('token không hợp lệ');
+    const sources = split[0].split('|');
+    if (!sources.length || sources.some(s => !['n', 'y', 'L', 'ne', 'pn', 'vp', 'hv', 'w'].includes(s))) {
+      throw new Error(`token lạ: <${raw}>`);
+    }
+    const fixed = sources.length === 1 && (sources[0] === 'L' || sources[0] === 'hv');
+    const range = parseRange(split[1], fixed ? 1 : 12);
+    if (fixed && (range.min !== 1 || range.max !== 1)) throw new Error(`token <${sources[0]}> chỉ nhận 1 ký tự`);
+    return { type: 'capture', sources, min: range.min, max: range.max };
+  }
+
+  function parseGroup(pattern, start) {
+    let end = start + 1;
+    let escaped = false;
+    for (; end < pattern.length; end++) {
+      const ch = pattern[end];
+      if (escaped) { escaped = false; continue; }
+      if (ch === '\\') { escaped = true; continue; }
+      if (ch === ')') break;
+    }
+    if (end >= pattern.length) throw new Error('thiếu dấu )');
+    const body = pattern.slice(start + 1, end);
+    const alternatives = body.split('|').map(s => s.replace(/\\([|()])/g, '$1'));
+    if (alternatives.some(s => !s)) throw new Error('nhóm rỗng');
+    const optional = pattern[end + 1] === '?';
+    return { token: { type: 'group', alternatives, optional }, end: end + (optional ? 2 : 1) };
+  }
+
+  function parsePattern(pattern) {
+    const tokens = [];
+    let literal = '';
+    const flush = () => {
+      if (literal) tokens.push({ type: 'literal', value: literal });
+      literal = '';
+    };
+    for (let i = 0; i < pattern.length;) {
+      if (pattern[i] === '<') {
+        flush();
+        const end = pattern.indexOf('>', i + 1);
+        if (end < 0) throw new Error('thiếu dấu >');
+        tokens.push(parseCapture(pattern.slice(i + 1, end)));
+        i = end + 1;
+      } else if (pattern[i] === '(') {
+        flush();
+        const group = parseGroup(pattern, i);
+        tokens.push(group.token);
+        i = group.end;
+      } else {
+        literal += pattern[i++];
+      }
+    }
+    flush();
+    return tokens;
+  }
+
+  function getAnchor(tokens) {
+    const candidates = [];
+    for (let i = 0; i < tokens.length; i++) {
+      const token = tokens[i];
+      if (token.type === 'literal' && token.value) candidates.push({ value: token.value, tokenIndex: i });
+      if (token.type === 'group' && !token.optional) {
+        for (const value of token.alternatives) candidates.push({ value, tokenIndex: i });
+      }
+    }
+    candidates.sort((a, b) => {
+      const commonA = a.value.length === 1 && COMMON_ANCHORS.has(a.value) ? 1 : 0;
+      const commonB = b.value.length === 1 && COMMON_ANCHORS.has(b.value) ? 1 : 0;
+      return commonA - commonB || b.value.length - a.value.length;
+    });
+    return candidates[0] || null;
+  }
+
+  function compileRule(pattern, translation, line) {
+    const tokens = parsePattern(pattern);
+    const captures = tokens.filter(t => t.type === 'capture');
+    const anchor = getAnchor(tokens);
+    if (!anchor) throw new Error('rule không có neo');
+    if (!captures.length) throw new Error('rule không có wildcard');
+    let used = new Set();
+    translation.replace(/\{(\d+)\}/g, (_m, n) => { used.add(Number(n)); return _m; });
+    if ([...used].some(n => n >= captures.length)) throw new Error('placeholder không tồn tại');
+    if (captures.some((_c, i) => !used.has(i))) throw new Error('capture không được dùng');
+    const specificity = tokens.reduce((sum, token) => {
+      if (token.type === 'literal') return sum + token.value.length;
+      if (token.type === 'group') return sum + Math.max(...token.alternatives.map(s => s.length));
+      return sum + token.max;
+    }, 0);
+    return { pattern, translation, line, tokens, anchor, specificity, wildcardCount: captures.length };
+  }
+
+  function parseRules(text) {
+    const rules = [];
+    const errors = [];
+    const seen = new Set();
+    String(text || '').split(/\r?\n/).forEach((raw, index) => {
+      const line = raw.trim();
+      if (!line || line.startsWith('#') || line.startsWith('//')) return;
+      const eq = line.indexOf('=');
+      if (eq < 1) { errors.push({ line: index + 1, reason: 'thiếu dấu =', source: raw }); return; }
+      const pattern = line.slice(0, eq).trim();
+      const translation = line.slice(eq + 1).trim();
+      if (!translation) { errors.push({ line: index + 1, reason: 'bản dịch rỗng', source: raw }); return; }
+      if (seen.has(pattern)) { errors.push({ line: index + 1, reason: 'duplicate', source: raw }); return; }
+      try {
+        rules.push(compileRule(pattern, translation, index + 1));
+        seen.add(pattern);
+      } catch (error) {
+        errors.push({ line: index + 1, reason: error.message, source: raw });
+      }
+    });
+    rules.sort((a, b) => b.specificity - a.specificity || a.wildcardCount - b.wildcardCount || a.pattern.localeCompare(b.pattern));
+    return { rules, errors };
+  }
+
+  function lookupSource(source, raw, dictionaries, separator) {
+    if (source === 'n') {
+      if (!NUMERIC_RE.test(raw) || NUMERIC_RE.exec(raw)[0] !== raw) return null;
+      return chineseToLatin(raw);
+    }
+    if (source === 'y') {
+      if (!YEAR_RE.test(raw) || YEAR_RE.exec(raw)[0] !== raw) return null;
+      return yearToLatin(raw);
+    }
+    if (source === 'L') return raw.length === 1 ? LABELS[raw] || null : null;
+    if (source === 'hv') {
+      if (raw.length !== 1 || dictionaries.pa[raw] == null) return null;
+      return firstMeaning(dictionaries.pa[raw], separator);
+    }
+    const dictOrder = source === 'ne' ? [dictionaries.names]
+      : source === 'pn' ? [dictionaries.pronouns]
+      : source === 'vp' ? [dictionaries.vp]
+      : [dictionaries.names, dictionaries.pronouns, dictionaries.vp];
+    for (const dict of dictOrder) {
+      if (dict && dict[raw] != null) return firstMeaning(dict[raw], separator);
+    }
+    return null;
+  }
+
+  function captureMatches(token, text, position, dictionaries, separator) {
+    const available = Math.min(token.max, text.length - position);
+    const matches = [];
+    for (const source of token.sources) {
+      for (let len = available; len >= token.min; len--) {
+        const raw = text.slice(position, position + len);
+        const value = lookupSource(source, raw, dictionaries, separator);
+        if (value != null) matches.push({ len, raw, value });
+      }
+      if (matches.length) break;
+    }
+    return matches;
+  }
+
+  function matchRule(rule, text, start, dictionaries, separator) {
+    function walk(tokenIndex, position, captures) {
+      if (tokenIndex === rule.tokens.length) return { end: position, captures };
+      const token = rule.tokens[tokenIndex];
+      if (token.type === 'literal') {
+        return text.startsWith(token.value, position)
+          ? walk(tokenIndex + 1, position + token.value.length, captures) : null;
+      }
+      if (token.type === 'group') {
+        for (const value of token.alternatives) {
+          if (!text.startsWith(value, position)) continue;
+          const hit = walk(tokenIndex + 1, position + value.length, captures);
+          if (hit) return hit;
+        }
+        return token.optional ? walk(tokenIndex + 1, position, captures) : null;
+      }
+      for (const candidate of captureMatches(token, text, position, dictionaries, separator)) {
+        const hit = walk(tokenIndex + 1, position + candidate.len, captures.concat(candidate));
+        if (hit) return hit;
+      }
+      return null;
+    }
+    const hit = walk(0, start, []);
+    if (!hit || hit.end <= start) return null;
+    const first = rule.tokens[0];
+    const last = rule.tokens[rule.tokens.length - 1];
+    const continuesNumberBefore = start > 0 && (
+      NUMERIC_CHAR_RE.test(text[start - 1]) ||
+      (start > 1 && NUMERIC_GROUP_SEPARATOR_RE.test(text[start - 1]) && NUMERIC_CHAR_RE.test(text[start - 2]))
+    );
+    const continuesNumberAfter = hit.end < text.length && (
+      NUMERIC_CHAR_RE.test(text[hit.end]) ||
+      (hit.end + 1 < text.length && NUMERIC_GROUP_SEPARATOR_RE.test(text[hit.end]) && NUMERIC_CHAR_RE.test(text[hit.end + 1]))
+    );
+    if (first.type === 'capture' && first.sources.some(s => s === 'n' || s === 'y') && continuesNumberBefore) return null;
+    if (last.type === 'capture' && last.sources.some(s => s === 'n' || s === 'y') && continuesNumberAfter) return null;
+    let translation = rule.translation;
+    hit.captures.forEach((capture, index) => { translation = translation.split(`{${index}}`).join(capture.value); });
+    return { start, end: hit.end, source: text.slice(start, hit.end), translation, pattern: rule.pattern, line: rule.line };
+  }
+
+  function normalizeDict(data) {
+    return data && typeof data === 'object' ? data : {};
+  }
+
+  function create(ruleText, inputDictionaries, options) {
+    const parsed = parseRules(ruleText);
+    const dictionaries = {
+      pa: normalizeDict(inputDictionaries && inputDictionaries.pa),
+      vp: normalizeDict(inputDictionaries && inputDictionaries.vp),
+      names: normalizeDict(inputDictionaries && inputDictionaries.names),
+      pronouns: normalizeDict(inputDictionaries && inputDictionaries.pronouns)
+    };
+    const separator = options && options.separator || '/';
+    const direct = new Map();
+    const wildcardFirst = [];
+    const wildcardIndex = new Map();
+    let maxWildcardPrefix = 0;
+    for (let ruleOrder = 0; ruleOrder < parsed.rules.length; ruleOrder++) {
+      const rule = parsed.rules[ruleOrder];
+      rule.order = ruleOrder;
+      const first = rule.tokens[0];
+      if (first.type === 'literal' && first.value) {
+        const key = first.value[0];
+        if (!direct.has(key)) direct.set(key, []);
+        direct.get(key).push(rule);
+      } else if (first.type === 'group' && !first.optional) {
+        for (const alt of first.alternatives) {
+          const key = alt[0];
+          if (!direct.has(key)) direct.set(key, []);
+          direct.get(key).push(rule);
+        }
+      } else {
+        wildcardFirst.push(rule);
+        let minOffset = 0;
+        let maxOffset = 0;
+        let anchors = null;
+        for (const token of rule.tokens) {
+          if (token.type === 'literal' && token.value) { anchors = [token.value]; break; }
+          if (token.type === 'group' && !token.optional) { anchors = token.alternatives; break; }
+          if (token.type === 'capture') { minOffset += token.min; maxOffset += token.max; }
+          else if (token.type === 'group' && token.optional) maxOffset += Math.max(...token.alternatives.map(s => s.length));
+        }
+        if (anchors) {
+          maxWildcardPrefix = Math.max(maxWildcardPrefix, maxOffset);
+          for (const anchor of anchors) {
+            const key = anchor[0];
+            if (!wildcardIndex.has(key)) wildcardIndex.set(key, []);
+            wildcardIndex.get(key).push({ rule, anchor, minOffset, maxOffset });
+          }
+        }
+      }
+    }
+
+    function longestVPAt(text, start) {
+      const max = Math.min(text.length - start, options && options.vpMaxLen || 64);
+      for (let len = max; len > 0; len--) if (dictionaries.vp[text.slice(start, start + len)] != null) return len;
+      return 0;
+    }
+
+    function matchAt(text, start) {
+      const candidates = (direct.get(text[start]) || []).slice();
+      const seen = new Set(candidates);
+      const lookaheadEnd = Math.min(text.length - start - 1, maxWildcardPrefix);
+      for (let offset = 1; offset <= lookaheadEnd; offset++) {
+        const indexed = wildcardIndex.get(text[start + offset]);
+        if (!indexed) continue;
+        for (const item of indexed) {
+          if (offset < item.minOffset || offset > item.maxOffset || seen.has(item.rule)) continue;
+          if (!text.startsWith(item.anchor, start + offset)) continue;
+          seen.add(item.rule);
+          candidates.push(item.rule);
+        }
+      }
+      // Defensive fallback for a future wildcard-only syntax. Current validation
+      // requires a literal anchor, so this normally remains empty.
+      if (!wildcardIndex.size) candidates.push(...wildcardFirst);
+      candidates.sort((a, b) => a.order - b.order);
+      for (const rule of candidates) {
+        const hit = matchRule(rule, text, start, dictionaries, separator);
+        if (!hit) continue;
+        const vpLength = longestVPAt(text, start);
+        if (vpLength >= hit.end - start) continue;
+        return hit;
+      }
+      return null;
+    }
+
+    return { matchAt, rules: parsed.rules, errors: parsed.errors };
+  }
+
+  return { create, parseRules, chineseToLatin, yearToLatin, LABELS };
+});
+
 (function () {
   'use strict';
 
   const CHINESE_RE = /[\u3400-\u4dbf\u4e00-\u9fff\uf900-\ufaff\u3007]/;
   const DICH_LIEU_SET = new Set(['的', '了', '着', '著']);
-  const DICT_TYPES = ['PA', 'VP', 'Names'];
+  const DICT_TYPES = ['PA', 'VP', 'Names', 'Pronouns'];
+  const MANAGER_TYPES = ['PA', 'VP', 'Names', 'Pronouns', 'Rules'];
   const DICT_STORAGE_PREFIX = 'vp_lite_dict_';
   const DICT_META_KEY = 'vp_lite_dict_meta';
+  const RULE_STORAGE_KEY = 'vp_lite_rules';
   const DEFAULT_DICT_URLS = {
     PA: 'https://raw.githubusercontent.com/duongden/script-vietphrase-translator/refs/heads/main/ChinesePhienAmWords.txt',
     VP: 'https://raw.githubusercontent.com/duongden/script-vietphrase-translator/refs/heads/main/Vietphrase.txt',
-    Names: 'https://raw.githubusercontent.com/duongden/script-vietphrase-translator/refs/heads/main/Names.txt'
+    Names: 'https://raw.githubusercontent.com/duongden/script-vietphrase-translator/refs/heads/main/Names.txt',
+    Pronouns: 'https://raw.githubusercontent.com/duongden/script-vietphrase-translator/refs/heads/main/Pronouns.txt',
+    Rules: 'https://raw.githubusercontent.com/duongden/script-vietphrase-translator/refs/heads/main/rule.txt'
   };
 
   function fixVietnamese(text) {
@@ -62,6 +451,9 @@
   let dictPA = {};
   let dictVP = {};
   let dictNames = {};
+  let dictPronouns = {};
+  let ruleText = '';
+  let ruleEngine = null;
   let dictVPKeys = [];
   let dictNamesKeys = [];
   let dictVPMaxLen = 1;
@@ -73,6 +465,7 @@
     motnghia: true,
     daucach: '/',
     dichlieu: true,
+    ruleEnabled: true,
     heightauto: true,
     scaleauto: true,
     delayMutation: 200,
@@ -171,21 +564,24 @@
 
   async function fetchDefaultDict(dictKey) {
     const text = await gmFetch(DEFAULT_DICT_URLS[dictKey]);
+    if (dictKey === 'Rules') return fixVietnamese(text);
     return parseDict(text, dictKey === 'PA' ? 'PA' : '');
   }
 
   async function ensureBaseDicts() {
     const merged = {};
     for (const key of DICT_TYPES) merged[key] = getStoredDict(key);
-    const missing = DICT_TYPES.filter(key => !merged[key]);
-    if (!missing.length) return merged;
+    const storedRules = fixVietnamese(gmGet(RULE_STORAGE_KEY, ''));
+    if (storedRules.trim()) merged.Rules = storedRules;
+    const missing = ['PA', 'VP', 'Names', 'Pronouns', 'Rules'].filter(key => !merged[key]);
 
     const fetched = await Promise.all(missing.map(async key => {
       const parsed = await fetchDefaultDict(key);
       // Người dùng có thể upload trong lúc request mặc định đang chạy.
-      const current = getStoredDict(key);
+      const current = key === 'Rules' ? fixVietnamese(gmGet(RULE_STORAGE_KEY, '')) : getStoredDict(key);
       if (current) return [key, current];
-      saveStoredDict(key, parsed, 'default');
+      if (key === 'Rules') gmSet(RULE_STORAGE_KEY, parsed);
+      else saveStoredDict(key, parsed, 'default');
       return [key, parsed];
     }));
 
@@ -198,12 +594,20 @@
     dictPA = normalizeDictObject(all.PA);
     dictVP = normalizeDictObject(all.VP);
     dictNames = normalizeDictObject(all.Names);
+    dictPronouns = normalizeDictObject(all.Pronouns);
+    ruleText = fixVietnamese(all.Rules || gmGet(RULE_STORAGE_KEY, ''));
     dictVPKeys = sortByLenDesc(dictVP);
     dictNamesKeys = sortByLenDesc(dictNames);
     dictVPMaxLen = dictVPKeys.length ? dictVPKeys[0].length : 1;
     dictNamesMaxLen = dictNamesKeys.length ? dictNamesKeys[0].length : 0;
+    ruleEngine = globalThis.VPRuleEngine ? globalThis.VPRuleEngine.create(ruleText, {
+      pa: dictPA,
+      vp: dictVP,
+      names: dictNames,
+      pronouns: dictPronouns
+    }, { separator: settings.daucach, vpMaxLen: dictVPMaxLen }) : null;
     isLoaded = true;
-    console.log(`[VP Lite] PA=${Object.keys(dictPA).length} VP=${dictVPKeys.length} Names=${dictNamesKeys.length}`);
+    console.log(`[VP Lite] PA=${Object.keys(dictPA).length} VP=${dictVPKeys.length} Names=${dictNamesKeys.length} Pronouns=${Object.keys(dictPronouns).length} Rules=${ruleEngine ? ruleEngine.rules.length : 0}`);
   }
 
   function hasHanChar(text) {
@@ -235,7 +639,7 @@
     ['（', '('], ['）', ')'],
     ['｛', '{'], ['｝', '}'],
     ['。', '.'], ['！', '!'], ['？', '?'],
-    ['；', ';'], ['：', ':'], ['，', ','], ['、', ','],
+    ['；', ';'], ['：', ':'], ['，', ','], ['、', ', '],
     ['……', '...'], ['…', '...'],
     ['——', '—'], ['—', '—'], ['－', '-'], ['～', '~'],
     ['•', '·'], ['　', ' '],
@@ -285,6 +689,19 @@
     return result;
   }
 
+  function normalizeTokenCase(pairs) {
+    let context = '';
+    for (const pair of pairs) {
+      let value = String(pair.viet || '');
+      const startsSentence = !context.trim() || /[.!?]\s*$/.test(context) || /\x02\s*$/.test(context);
+      if (!startsSentence && pair.type !== 'name' && /^[A-ZÀ-ỸĐ]/.test(value)) {
+        value = value[0].toLowerCase() + value.slice(1);
+        pair.viet = value;
+      }
+      context = joinTranslatedTokens([context, value]);
+    }
+  }
+
   function postProcessTranslatedText(text) {
     return text
       .replace(/\s{2,}/g, ' ')
@@ -294,6 +711,7 @@
       .replace(/([a-zA-ZÀ-ỹ\x03\])])(\x02)/g, '$1 $2')
       .replace(/([:;!?,])([a-zA-ZÀ-ỹ\x02])/g, '$1 $2')
       .replace(/([a-zA-ZÀ-ỹ])([([])/g, '$1 $2')
+      .replace(/(^|[^0-9]),(?=[0-9])/g, '$1, ')
       .trim();
   }
 
@@ -332,6 +750,15 @@
         continue;
       }
 
+      let vpLength = 0;
+      for (let len = Math.min(dictVPMaxLen, remaining); len >= name.length; len--) {
+        if (dictVP[text.slice(i, i + len)] !== undefined) { vpLength = len; break; }
+      }
+      if (vpLength >= name.length) {
+        i++;
+        continue;
+      }
+
       if (plainStart < i) {
         segments.push({ text: text.slice(plainStart, i), isName: false });
       }
@@ -357,13 +784,34 @@
     const { ngoac, motnghia, daucach, dichlieu } = settings;
     text = normalizePunct(text);
 
-    const segments = takeNameSegments(text);
+    const ruleSegments = [];
+    if (settings.ruleEnabled !== false && ruleEngine && ruleEngine.rules.length) {
+      let plainStart = 0;
+      let cursor = 0;
+      while (cursor < text.length) {
+        const hit = ruleEngine.matchAt(text, cursor);
+        if (!hit) { cursor++; continue; }
+        if (plainStart < cursor) ruleSegments.push({ text: text.slice(plainStart, cursor) });
+        ruleSegments.push({ text: hit.translation, han: hit.source, isRule: true });
+        cursor = hit.end;
+        plainStart = cursor;
+      }
+      if (plainStart < text.length) ruleSegments.push({ text: text.slice(plainStart) });
+    } else {
+      ruleSegments.push({ text });
+    }
+    const segments = [];
+    for (const segment of ruleSegments) {
+      if (segment.isRule) segments.push(segment);
+      else segments.push(...takeNameSegments(segment.text));
+    }
 
     const pairs = [];
     const maxLen = dictVPMaxLen;
 
     for (const seg of segments) {
-      if (seg.isName) { pairs.push({ han: seg.han, viet: seg.text }); continue; }
+      if (seg.isRule) { pairs.push({ han: seg.han, viet: seg.text }); continue; }
+      if (seg.isName) { pairs.push({ han: seg.han, viet: seg.text, type: 'name' }); continue; }
       const s = seg.text;
       let i = 0;
       while (i < s.length) {
@@ -396,6 +844,7 @@
       }
     }
 
+    normalizeTokenCase(pairs);
     let result = postProcessTranslatedText(joinTranslatedTokens(pairs.map(pair => pair.viet)));
     const tokenMap = [];
     let searchFrom = 0;
@@ -917,7 +1366,7 @@
     panel.appendChild(description);
 
     const meta = gmGet(DICT_META_KEY, {});
-    for (const dictKey of DICT_TYPES) {
+    for (const dictKey of MANAGER_TYPES) {
       const row = document.createElement('div');
       Object.assign(row.style, {
         display: 'grid', gridTemplateColumns: '72px 1fr auto', alignItems: 'center',
@@ -928,8 +1377,10 @@
       name.textContent = dictKey;
       const status = document.createElement('span');
       const info = meta && typeof meta === 'object' ? meta[dictKey] : null;
-      const stored = getStoredDict(dictKey);
-      const count = stored ? Object.keys(stored).length : 0;
+      const stored = dictKey === 'Rules' ? gmGet(RULE_STORAGE_KEY, '') : getStoredDict(dictKey);
+      const count = dictKey === 'Rules'
+        ? (globalThis.VPRuleEngine ? globalThis.VPRuleEngine.parseRules(stored || '').rules.length : 0)
+        : stored ? Object.keys(stored).length : 0;
       status.textContent = count
         ? `${count.toLocaleString('vi-VN')} mục · ${info?.source === 'user' ? 'cá nhân' : 'mặc định'}`
         : 'Chưa có dữ liệu';
@@ -954,10 +1405,13 @@
         button.disabled = true;
         status.textContent = 'Đang đọc và lưu…';
         try {
-          const parsed = parseDict(await file.text(), dictKey === 'PA' ? 'PA' : '');
-          saveStoredDict(dictKey, parsed, 'user');
+          const uploadedText = await file.text();
+          const parsed = dictKey === 'Rules' ? fixVietnamese(uploadedText) : parseDict(uploadedText, dictKey === 'PA' ? 'PA' : '');
+          if (dictKey === 'Rules') gmSet(RULE_STORAGE_KEY, parsed);
+          else saveStoredDict(dictKey, parsed, 'user');
           await loadDicts();
-          status.textContent = `${Object.keys(parsed).length.toLocaleString('vi-VN')} mục · cá nhân`;
+          const parsedCount = dictKey === 'Rules' ? (ruleEngine ? ruleEngine.rules.length : 0) : Object.keys(parsed).length;
+          status.textContent = `${parsedCount.toLocaleString('vi-VN')} mục · cá nhân`;
           restoreAndRetranslate();
         } catch (err) {
           status.textContent = `Lỗi: ${err.message || err}`;
@@ -990,13 +1444,19 @@
   GM_registerMenuCommand('🔄 Làm mới bản dịch', () => restoreAndRetranslate());
   GM_registerMenuCommand('📋 Sao chép chữ Hán gốc', () => copyOriginalHan());
   GM_registerMenuCommand('📚 Từ điển cá nhân', () => openDictionaryManager());
+  GM_registerMenuCommand('⚙ Bật / tắt Rule.txt', () => {
+    settings.ruleEnabled = !settings.ruleEnabled;
+    const stored = gmGet('vp_lite_options', {});
+    gmSet('vp_lite_options', { ...(stored && typeof stored === 'object' ? stored : {}), ruleEnabled: settings.ruleEnabled });
+    restoreAndRetranslate();
+  });
 
   (async function init() {
     injectVietnameseStyle();
     const stored = gmGet('vp_lite_options', null);
     if (stored && typeof stored === 'object') {
       // Chỉ lấy settings không liên quan đến bật/tắt từ storage
-      const safeKeys = ['ngoac', 'motnghia', 'daucach', 'dichlieu', 'heightauto', 'scaleauto', 'delayMutation', 'delayTrans'];
+      const safeKeys = ['ngoac', 'motnghia', 'daucach', 'dichlieu', 'ruleEnabled', 'heightauto', 'scaleauto', 'delayMutation', 'delayTrans'];
       for (const k of safeKeys) {
         if (stored[k] !== undefined) settings[k] = stored[k];
       }
