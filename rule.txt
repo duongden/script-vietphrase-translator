@@ -4,6 +4,21 @@
 # Nhập bằng chế độ THAY THẾ.
 
 # ===========================================================================
+# QUY ĐỊNH TOKEN (theo [HƯỚNG DẪN] qt-translate-rules.md)
+# ===========================================================================
+# <n>  : chuỗi số Hán hoặc Ả Rập, kể cả 十百千万萬亿億; sinh số Ả Rập.
+# <y>  : số đọc từng chữ số, không nhận 十百千; dùng cho năm/mã số.
+# <L>  : một nhãn chương 章卷集节節幕回折; sinh tên nhãn tiếng Việt.
+# <ne> : cụm trong từ điển Name.       <pn> : cụm trong từ điển Pronoun.
+# <vp> : cụm trong từ điển VietPhrase. <hv> : một ký tự Hán Việt.
+# <w>  : viết tắt của <ne|pn|vp>; thử theo thứ tự từ trái sang phải.
+# :min-max giới hạn SỐ KÝ TỰ token nuốt; :n là độ dài cố định.
+# (a|b) là nhóm ký tự thay thế; (a|b)? cho phép vắng; nhóm không sinh capture.
+# {0}, {1}, ... tham chiếu TOKEN theo thứ tự xuất hiện; chữ thường/nhóm không được đánh số.
+# Mỗi rule phải có ít nhất một ký tự thường làm neo và phải dùng mọi capture.
+# Engine tự chặn <n>/<y> nuốt một phần chuỗi số dài hơn; không tự thêm dấu phân cách số.
+
+# ===========================================================================
 # PHẦN 1 — SỐ, THỜI GIAN, ĐƠN VỊ, KÍCH THƯỚC
 # ===========================================================================
 <y:3-4>年<n:1-2>月<n:1-3>(日|号|號) = ngày {2} tháng {1} năm {0}
@@ -14,6 +29,7 @@
 <n:1-3>分(钟|鐘) = {0} phút
 <n:1-3>秒(钟|鐘)? = {0} giây
 <n:1-3>小(时|時) = {0} tiếng
+<n:1-3>(个|個)小(时|時) = {0} tiếng
 <y:3-4>年<n:1-2>月<n:1-3>(日|号|號)(至|到)<y:3-4>年<n:1-2>月<n:1-3>(日|号|號) = từ ngày {2} tháng {1} năm {0} đến ngày {5} tháng {4} năm {3}
 <n:1-2>月<n:1-3>(日|号|號)(至|到)<n:1-2>月<n:1-3>(日|号|號) = từ ngày {1} tháng {0} đến ngày {3} tháng {2}
 <n:1-2>月<n:1-3>(日|号|號)(至|到)<n:1-3>(日|号|號) = từ ngày {1} đến ngày {2} tháng {0}
@@ -73,96 +89,7 @@
 <n:1-6>點<y:1-4>% = {0},{1}%
 第<n:1-6><L> = {1} {0}
 百分之<n:1-8> = {0}%
-<n:1-4>(个|個)十(亿|億)美元 = {0} tỷ đô la
 <n:1-4>(个|個)十(亿|億) = {0} tỷ
-<y:1-8>(亿|億)美元 = {0} tỷ đô la
-<y:1>十<y:1>(亿|億)美元 = {0},{1} tỷ đô la
-十<y:1>(亿|億)美元 = 1,{0} tỷ đô la
-<y:1>十(亿|億)美元 = {0} tỷ đô la
-<y:1>(亿|億)美元 = {0}00 triệu đô la
-<y:1>00(亿|億)(欧|歐)元 = {0}0 tỷ euro
-<y:1><y:1>0(亿|億)欧元 = {0}{1} tỷ euro
-<y:1><y:1>0(亿|億)歐元 = {0}{1} tỷ euro
-<y:1><y:1><y:1>(亿|億)欧元 = {0}{1},{2} tỷ euro
-<y:1><y:1><y:1>(亿|億)歐元 = {0}{1},{2} tỷ euro
-<y:1><y:1>(亿|億)欧元 = {0},{1} tỷ euro
-<y:1><y:1>(亿|億)歐元 = {0},{1} tỷ euro
-<y:1>百<y:1>十(亿|億)(欧|歐)元 = {0}{1} tỷ euro
-<y:1>百<y:1>十<y:1>(亿|億)(欧|歐)元 = {0}{1},{2} tỷ euro
-<y:1>百(亿|億)(欧|歐)元 = {0}0 tỷ euro
-<y:1>十<y:1>(亿|億)(欧|歐)元 = {0},{1} tỷ euro
-<y:1>十(亿|億)(欧|歐)元 = {0} tỷ euro
-<y:1>(亿|億)(欧|歐)元 = {0}00 triệu euro
-<n:1-6>(亿|億)元 = {0} tỷ tệ
-<n:1-8>美元 = {0} đô la
-<n:1-8>美金 = {0} đô la
-<n:1-8>欧元 = {0} euro
-<n:1-8>日元 = {0} yên
-<n:1-8>英(镑|鎊) = {0} bảng Anh
-<n:1-8>港(币|幣) = {0} đô la Hồng Kông
-<n:1-8>人民(币|幣) = {0} nhân dân tệ
-<n:1-6>(万|萬)台 = {0} vạn máy
-<n:1-6>(点|點|.|．)<n:1-4>(亿|億)台 = {0},{1} tỷ máy
-<n:1-6>(亿|億)台 = {0} tỷ máy
-<n:1-8>元钱 = {0} tệ
-<n:1-8>(块|塊)钱 = {0} tệ
-<n:1-8>元 = {0} tệ
-<n:1-8>(枚|块|塊)?金(币|幣) = {0} đồng vàng
-<n:1-8>银币 = {0} đồng bạc
-<n:1-8>银幣 = {0} đồng bạc
-<n:1-8>銀币 = {0} đồng bạc
-<n:1-8>銀幣 = {0} đồng bạc
-<n:1-8>枚银币 = {0} đồng bạc
-<n:1-8>枚银幣 = {0} đồng bạc
-<n:1-8>枚銀币 = {0} đồng bạc
-<n:1-8>枚銀幣 = {0} đồng bạc
-<n:1-8>块银币 = {0} đồng bạc
-<n:1-8>块银幣 = {0} đồng bạc
-<n:1-8>块銀币 = {0} đồng bạc
-<n:1-8>块銀幣 = {0} đồng bạc
-<n:1-8>塊银币 = {0} đồng bạc
-<n:1-8>塊银幣 = {0} đồng bạc
-<n:1-8>塊銀币 = {0} đồng bạc
-<n:1-8>塊銀幣 = {0} đồng bạc
-<n:1-8>(枚|块|塊)?(铜|銅)板 = {0} đồng tiền
-<n:1-8>(枚|块|塊)?(铜|銅)钱 = {0} đồng tiền
-<n:1-8>文钱 = {0} văn tiền
-<n:1-8>(锭|錠|块|塊)?金(锭|錠) = {0} đĩnh vàng
-<n:1-8>银锭 = {0} đĩnh bạc
-<n:1-8>银錠 = {0} đĩnh bạc
-<n:1-8>銀锭 = {0} đĩnh bạc
-<n:1-8>銀錠 = {0} đĩnh bạc
-<n:1-8>锭银锭 = {0} đĩnh bạc
-<n:1-8>锭银錠 = {0} đĩnh bạc
-<n:1-8>锭銀锭 = {0} đĩnh bạc
-<n:1-8>锭銀錠 = {0} đĩnh bạc
-<n:1-8>錠银锭 = {0} đĩnh bạc
-<n:1-8>錠银錠 = {0} đĩnh bạc
-<n:1-8>錠銀锭 = {0} đĩnh bạc
-<n:1-8>錠銀錠 = {0} đĩnh bạc
-<n:1-8>块银锭 = {0} đĩnh bạc
-<n:1-8>块银錠 = {0} đĩnh bạc
-<n:1-8>块銀锭 = {0} đĩnh bạc
-<n:1-8>块銀錠 = {0} đĩnh bạc
-<n:1-8>塊银锭 = {0} đĩnh bạc
-<n:1-8>塊银錠 = {0} đĩnh bạc
-<n:1-8>塊銀锭 = {0} đĩnh bạc
-<n:1-8>塊銀錠 = {0} đĩnh bạc
-<n:1-8>(锭|錠)(银|銀)子 = {0} đĩnh bạc
-<n:1-8>金(叶|葉)子 = {0} lá vàng
-<n:1-8>(贯|貫|吊)钱 = {0} quan tiền
-<n:1-8>两纹银 = {0} lượng bạc
-<n:1-8>两纹銀 = {0} lượng bạc
-<n:1-8>两紋银 = {0} lượng bạc
-<n:1-8>两紋銀 = {0} lượng bạc
-<n:1-8>兩纹银 = {0} lượng bạc
-<n:1-8>兩纹銀 = {0} lượng bạc
-<n:1-8>兩紋银 = {0} lượng bạc
-<n:1-8>兩紋銀 = {0} lượng bạc
-<n:1-8>(两|兩)白(银|銀) = {0} lượng bạc
-<n:1-8>(两|兩)(银|銀)子 = {0} lượng bạc
-<n:1-8>(两|兩)(黄|黃)金 = {0} lượng vàng
-<n:1-8>(两|兩)金子 = {0} lượng vàng
 <n:1-8>(块|塊|枚|颗|顆)?(极品|極品)(灵|靈)石 = {0} linh thạch cực phẩm
 <n:1-8>(块|塊|枚|颗|顆)?上品(灵|靈)石 = {0} linh thạch thượng phẩm
 <n:1-8>(块|塊|枚|颗|顆)?中品(灵|靈)石 = {0} linh thạch trung phẩm
@@ -182,7 +109,6 @@
 <n:1-8>功勳點 = {0} điểm công huân
 <n:1-8>积分 = {0} điểm tích lũy
 <n:1-8>積分 = {0} điểm tích lũy
-<n:1-8>星(币|幣) = {0} tinh tệ
 <n:1-2>阶 = bậc {0}
 <n:1-2>階 = bậc {0}
 第<n:1-3>重 = tầng {0}
@@ -389,11 +315,14 @@
 第<n:1-10>(讲|講) = Chương {0}
 第<n:1-10>段 = Đoạn {0}
 第<n:1-10>節 = Tiết {0}
-<n:1-8>(万|萬)(亿|億)元 = {0} nghìn tỷ tệ
-<n:1-8>元人民(币|幣) = {0} nhân dân tệ
-<n:1-6>(点|點|.|．|,)<y:1-4>元 = {0},{1} tệ
-<n:1-6>(点|點|.|．|,)<y:1-4>美元 = {0},{1} đô la
-<n:1-6>(点|點|.|．|,)<y:1-4>人民(币|幣) = {0},{1} nhân dân tệ
+<n:1-10>章 = Chương {0}:
+<n:1-10>回 = Hồi {0}:
+<n:1-10>卷 = Quyển {0}:
+<n:1-10>集 = Tập {0}:
+<n:1-10>节 = Tiết {0}:
+<n:1-10>節 = Tiết {0}:
+<n:1-10>幕 = Màn {0}:
+<n:1-10>折 = Chiết {0}:
 <n:1-8>多米左右 = khoảng hơn {0} mét
 <n:1-8>多米 = hơn {0} mét
 <n:1-8>米左右的(距离|距離) = khoảng cách xấp xỉ {0} mét
@@ -600,31 +529,6 @@
 長<n:1-6>(厘米|公分)(宽|寬)<n:1-6>(厘米|公分)<n:1-6>(点|點|.|．|,)<y:1-4>(厘米|公分)(高|高度) = dài {0} xen-ti-mét, rộng {1} xen-ti-mét, cao {2},{3} xen-ti-mét
 長<n:1-6>(点|點|.|．|,)<y:1-4>(米|公尺)(宽|寬)<n:1-6>(点|點|.|．|,)<y:1-4>(米|公尺)(高|高度)<n:1-6>(点|點|.|．|,)<y:1-4>(米|公尺) = dài {0},{1} mét, rộng {2},{3} mét, cao {4},{5} mét
 長<n:1-6>(点|點|.|．|,)<y:1-4>(厘米|公分)(宽|寬)<n:1-6>(点|點|.|．|,)<y:1-4>(厘米|公分)(高|高度)<n:1-6>(点|點|.|．|,)<y:1-4>(厘米|公分) = dài {0},{1} xen-ti-mét, rộng {2},{3} xen-ti-mét, cao {4},{5} xen-ti-mét
-<ne|pn:1-4>环视四周 = {0} nhìn khắp bốn phía
-<ne|pn:1-4>環視四周 = {0} nhìn khắp bốn phía
-<ne|pn:1-4>环顾四周 = {0} nhìn quanh bốn phía
-<ne|pn:1-4>環顧四周 = {0} nhìn quanh bốn phía
-<ne|pn:1-4>扫视四周 = {0} quét mắt nhìn quanh
-<ne|pn:1-4>掃視四周 = {0} quét mắt nhìn quanh
-<ne|pn:1-4>巡视四周 = {0} quan sát xung quanh
-<ne|pn:1-4>巡視四周 = {0} quan sát xung quanh
-<ne|pn:1-4>看向四周 = {0} nhìn về xung quanh
-<ne|pn:1-4>望向四周 = {0} nhìn về xung quanh
-飘向<w:1-6>四周 = bay về phía xung quanh {0}
-飄向<w:1-6>四周 = bay về phía xung quanh {0}
-飞向<w:1-6>四周 = bay về phía xung quanh {0}
-飛向<w:1-6>四周 = bay về phía xung quanh {0}
-散向<w:1-6>四周 = tản ra xung quanh {0}
-弥漫在<w:1-6>四周 = lan tỏa xung quanh {0}
-瀰漫在<w:1-6>四周 = lan tỏa xung quanh {0}
-分布在<w:1-6>四周 = phân bố xung quanh {0}
-散布在<w:1-6>四周 = rải rác xung quanh {0}
-笼罩在<w:1-6>四周 = bao phủ xung quanh {0}
-籠罩在<w:1-6>四周 = bao phủ xung quanh {0}
-聚集在<w:1-6>四周 = tụ tập xung quanh {0}
-围绕在<w:1-6>四周 = bao quanh {0}
-圍繞在<w:1-6>四周 = bao quanh {0}
-守在<w:1-6>四周 = canh giữ xung quanh {0}
 <y:1>百米 = {0}00 mét
 <y:1>百公尺 = {0}00 mét
 凌晨<n:1-3>(点|點|时|時)多(钟|鐘)? = hơn {0} giờ sáng
@@ -737,13 +641,12 @@
 <n:1-2>月<n:1-3>日上午 = sáng ngày {1} tháng {0}
 <n:1-2>月<n:1-3>日中午 = trưa ngày {1} tháng {0}
 <n:1-2>月<n:1-3>日下午 = chiều ngày {1} tháng {0}
-“<y:1>千<y:1>……” = “{0}.{1}00……”
-"<y:1>千<y:1>……" = "{0}.{1}00……"
+“<y:1>千<y:1>……” = “{0}{1}00……”
+"<y:1>千<y:1>……" = "{0}{1}00……"
 
 # ===========================================================================
 # ĐỊNH DẠNG SỐ LỚN, TIỀN TỆ HỖN HỢP VÀ PHÂN SỐ
 # ===========================================================================
-# Dấu chấm phân cách hàng nghìn; dấu phẩy chỉ dùng cho phần thập phân.
 <n:1-4>分之<n:1-4> = {1} phần {0}
 <n:1-6>(点|點|.|．|,)<y:1-4>点 = {0},{1} điểm
 <n:1-6>(点|點|.|．|,)<y:1-4>點 = {0},{1} điểm
@@ -751,7 +654,7 @@
 # ===========================================================================
 # SỐ LỚN RÚT GỌN: VẠN, TRĂM NGHÌN, TRIỆU
 # ===========================================================================
-# 116.000 được viết 116 nghìn; số dưới 10.000 vẫn dùng dấu chấm.
+# Số lớn được rút gọn theo đơn vị nghìn, triệu.
 十万<n:1>千 = 10{0} nghìn
 十萬<n:1>千 = 10{0} nghìn
 十<n:1>万<n:1>千 = 1{0}{1} nghìn
@@ -770,194 +673,3 @@
 <n:1-3>千(万|萬) = {0}0 triệu
 <n:1-2>万 = {0} vạn
 <n:1-2>萬 = {0} vạn
-<n:1-2>(万|萬)元 = {0} vạn tệ
-十<n:1-3>(万|萬)元 = 1{0}0 nghìn tệ
-<n:1-3>十(万|萬)元 = {0} trăm nghìn tệ
-<n:1-3>十<n:1-3>(万|萬)元 = {0}{1}0 nghìn tệ
-<n:1-3>百(万|萬)元 = {0} triệu tệ
-<n:1-3>百<n:1-3>十(万|萬)元 = {0} triệu {1}00 nghìn tệ
-<n:1-3>百<n:1-3>十<n:1-3>(万|萬)元 = {0} triệu {1}{2}0 nghìn tệ
-<n:1-3>百零<n:1-3>(万|萬)元 = {0} triệu {1}0 nghìn tệ
-<n:1-3>千(万|萬)元 = {0}0 triệu tệ
-十万<n:1>千元 = 10{0} nghìn tệ
-十萬<n:1>千元 = 10{0} nghìn tệ
-十<n:1>万<n:1>千元 = 1{0}{1} nghìn tệ
-十<n:1>萬<n:1>千元 = 1{0}{1} nghìn tệ
-<n:1>十万<n:1>千元 = {0}0{1} nghìn tệ
-<n:1>十萬<n:1>千元 = {0}0{1} nghìn tệ
-<n:1>十<n:1>万<n:1>千元 = {0}{1}{2} nghìn tệ
-<n:1>十<n:1>萬<n:1>千元 = {0}{1}{2} nghìn tệ
-
-
-
-
-
-# ===========================================================================
-# PHẦN 2 — NAME + PRONOUNS TINH GỌN
-# ===========================================================================
-姓<ne:1-8>的汉子 = người đàn ông họ {0}
-在<ne|pn:1-4>身上 = trên người {0}
-在<ne|pn:1-4>手上 = trong tay {0}
-在<ne|pn:1-4>肩上 = trên vai {0}
-在<ne|pn:1-4>面前 = trước mặt {0}
-在<ne|pn:1-4>身(边|邊) = bên cạnh {0}
-<ne|pn:1-4>不客气的声音 = giọng nói không khách khí của {0}
-<ne|pn:1-4>不成熟的作品 = tác phẩm chưa chín chắn của {0}
-<ne|pn:1-4>似乎挺害怕的样子 = dáng vẻ của {0} tựa hồ thật sợ hãi
-<ne|pn:1-4>体内的状况 = tình trạng trong cơ thể của {0}
-<ne|pn:1-4>做梦都没有想到的事情 = chuyện {0} nằm mơ cũng không nghĩ tới
-<ne|pn:1-4>去柜台拿酒的背影 = bóng lưng của {0} đi quầy lấy rượu
-<ne|pn:1-4>可以承受的范围内 = trong phạm vi {0} có thể tiếp nhận
-<ne|pn:1-4>和其他女人的关系 = quan hệ của {0} và những cô gái khác
-<ne|pn:1-4>和自己之间的距离 = khoảng cách giữa mình và {0}
-<ne|pn:1-4>妻子现在的情况怎么样了 = tình huống của {0} ta bây giờ thế nào
-<ne|pn:1-4>对我们的威胁该怎么办 = chúng ta nên làm gì đối với uy hiếp của {0}
-<ne|pn:1-4>才是最开心的时候 = mới là thời điểm {0} vui vẻ nhất
-<ne|pn:1-4>把电话拿过去以后 = sau khi {0} cầm điện thoại
-<ne|pn:1-4>朋友就是我们的朋友 = bạn {0} chính là bạn của chúng ta
-<ne|pn:1-4>来这里找自己的目的 = mục đích của {0} tới nơi này tìm mình
-<ne|pn:1-4>的心脏剧烈地跳动着 = tim của {0} đập kịch liệt
-<ne|pn:1-4>的父母和家人的感受 = cảm thụ của cha mẹ và người nhà của {0}
-<ne|pn:1-4>的话出了他的意料 = lời của {0} ra ngoài dự liệu của hắn
-<ne|pn:1-4>能够掌控得了的事情了 = chuyện {0} có thể khống chế được
-<ne|pn:1-4>要当一名军人的想法 = ý tưởng {0} muốn đi lính
-<ne|pn:1-4>说的很重要的事情 = chuyện {0} nói rất trọng yếu
-<ne|pn:1-4>还在嘀嘀咕咕的时候 = lúc {0} còn đang lẩm bẩm
-<ne|pn:1-4>还是个正常人类时 = lúc {0} vẫn còn là nhân loại bình thường
-一个<ne|pn:1-4>的声音 = một giọng nói của {0}
-一个敢对<ne|pn:1-4>女人动手的家伙 = một tên dám động thủ với đàn bà của {0}
-一张和<ne|pn:1-4>有几分相似的脸 = một gương mặt có mấy phần tương tự với {0}
-不是对<ne|pn:1-4>的医术没有自信 = không phải là không tin y thuật của {0}
-不知道该不该告诉<ne|pn:1-4> = không biết có nên nói cho {0} biết hay không
-不禁<ne|pn:1-4>的表情 = vẻ mặt của {0} không khỏi thay đổi
-不给<ne|pn:1-4>留第二条路了 = không lưu con đường thứ hai cho {0}
-与现在<ne|pn:1-4>的身份比起来 = so với thân phận bây giờ của {0}
-也就不跟<ne|pn:1-4>绕弯子了 = cũng sẽ không vòng vo với {0}
-从<ne|pn:1-4>的手里拿了过去 = lấy lại từ trong tay của {0}
-从<ne|pn:1-4>的身前擦了过去 = lướt qua trước người của {0}
-以前自己对<ne|pn:1-4>的印象 = ấn tượng trước kia của mình đối với {0}
-众人对<ne|pn:1-4>的第一印象 = ấn tượng đầu tiên của mọi người đối với {0}
-传来<ne|pn:1-4>的声音 = giọng nói của {0} truyền tới
-你们给<ne|pn:1-4>下药的事儿了 = chuyện các ngươi bỏ thuốc {0}
-你想介绍给<ne|pn:1-4>的那个人 = người ngươi muốn giới thiệu cho {0}
-例如<ne|pn:1-4>的名字 = ví dụ như tên của {0}
-便向<ne|pn:1-4>脸上打了过去 = đánh lên mặt {0}
-单独给<ne|pn:1-4>一个人服务 = chỉ phục vụ cho một mình {0}
-却不想就这么放过<ne|pn:1-4> = ngươi không muốn bỏ qua cho {0} như vậy
-听出是<ne|pn:1-4>的声音来了 = nghe ra là giọng của {0}
-和<ne|pn:1-4>可以媲美的组织 = tổ chức có thể sánh bằng với {0}
-和<ne|pn:1-4>多年合作的经验 = kinh nghiệm nhiều năm hợp tác với {0}
-和<ne|pn:1-4>拌嘴 = cãi vã với {0}
-和<ne|pn:1-4>接触了几次之后 = sau mấy lần tiếp xúc với {0}
-和<ne|pn:1-4>讨价还价起来了 = trả giá với {0}
-在<ne|pn:1-4>手机上打了什么 = viết gì trên điện thoại di động {0}
-在没有了解<ne|pn:1-4>心性之前 = trước khi hiểu tâm tính của {0}
-在确定<ne|pn:1-4>的身份之后 = sau khi xác định thân phận của {0}
-在进入<ne|pn:1-4>的体内之后 = sau khi tiến vào thân thể của {0}
-实力竟然比<ne|pn:1-4>还要强大 = thực lực lại mạnh hơn {0}
-对<ne|pn:1-4>低声说道 = thấp giọng nói với {0}
-对<ne|pn:1-4>信誉不信任的问题 = vấn đề không tín nhiệm uy tín đối với {0}
-对<ne|pn:1-4>露出了一丝微笑 = khẽ mỉm cười với {0}
-将<ne|pn:1-4>的疑问说了出来 = nói lên nghi vấn của {0}
-将他和<ne|pn:1-4>当做一回事 = đánh đồng hắn với {0}
-将帽子给<ne|pn:1-4>戴了回去 = đội mũ lại cho {0}
-就去给<ne|pn:1-4>问 = đi hỏi cho {0} ngay
-就已经坐到了<ne|pn:1-4>面前 = đã ngồi ở trước mặt {0}
-就把钱给<ne|pn:1-4>拿过来了 = liền lấy tiền tới cho {0}
-就是<ne|pn:1-4>的声音 = chính là giọng nói của {0}
-就立刻要打电话给<ne|pn:1-4>的 = phải lập tức gọi điện thoại cho {0}
-就给<ne|pn:1-4>的父亲打了个电话 = gọi điện thoại cho cha của {0}
-就跟<ne|pn:1-4>拼个你死我活 = liều mạng với {0}
-居然还记得<ne|pn:1-4>的名字 = lại còn nhớ tên của {0}
-已经没有了<ne|pn:1-4>的身影了 = đã không có bóng dáng của {0}
-并没有给<ne|pn:1-4>正面的回答 = cũng không có ngay mặt trả lời {0}
-怎么会跟<ne|pn:1-4>打起来的 = tại sao sẽ đánh nhau với {0}
-打了多少电话给<ne|pn:1-4>了 = gọi bao nhiêu điện thoại cho {0}
-把下巴搭载<ne|pn:1-4>肩膀上 = gác càm trên bả vai {0}
-把那个跟踪的人给<ne|pn:1-4>带过来 = mang người theo dõi kia tới cho {0}
-拨通了<ne|pn:1-4>的手机号码 = bấm số điện thoại di động của {0}
-拿出手机来给<ne|pn:1-4>打了过去 = lấy điện thoại di động ra gọi cho {0}
-拿起电话来给<ne|pn:1-4>打了过去 = cầm điện thoại lên gọi cho {0}
-掏出电话给<ne|pn:1-4>拨了过去 = móc điện thoại ra gọi cho {0}
-旁边<ne|pn:1-4>的声音 = giọng nói của {0} ở bên cạnh
-早就看到<ne|pn:1-4>的表情了 = đã sớm nhìn thấy vẻ mặt của {0}
-朝<ne|pn:1-4>的头上砸了过去 = đập lên đầu của {0}
-未来的及跟<ne|pn:1-4>打招呼 = không kịp chào hỏi {0}
-根本就不相信<ne|pn:1-4>的话 = căn bản cũng không tin lời của {0}
-根本就没有和<ne|pn:1-4>说话的意思 = can bản không có ý muốn nói chuyện với {0}
-死死地握着<ne|pn:1-4>的手 = nắm chặt tay {0}
-比<ne|pn:1-4>的医术还要高明 = y thuật cao minh hơn {0}
-比<ne|pn:1-4>还要强大的现实 = thực tế còn mạnh hơn {0}
-没空陪<ne|pn:1-4>了 = không rảnh ở bên {0} nữa
-没跟<ne|pn:1-4>扯皮 = không cãi vã với {0}
-现在没时间跟<ne|pn:1-4>废话 = bây giờ không có thời gian nói nhảm với {0}
-直接蹲坐在了<ne|pn:1-4>面前 = trực tiếp ngồi chồm hổm ở trước mặt {0}
-看到<ne|pn:1-4>的表情 = nhìn thấy vẻ mặt của {0}
-看着<ne|pn:1-4>的表情 = nhìn vẻ mặt của {0}
-紧握着<ne|pn:1-4>的手 = nắm chặt tay của {0}
-给<ne|pn:1-4>一肘子 = thúc cùi chỏ {0} một cái
-给<ne|pn:1-4>做了一个噤声的手势 = làm thủ hiệu chớ có lên tiếng cho {0}
-给<ne|pn:1-4>做这一桌的饭菜 = làm một bàn thức ăn này cho {0}
-给<ne|pn:1-4>可好? = cho {0} được không?
-给<ne|pn:1-4>打过好几次电话 = nhiều lần gọi điện thoại cho {0}
-给<ne|pn:1-4>把电话打了过去 = gọi điện thoại cho {0}
-给<ne|pn:1-4>生孩子吧 = sinh con cho {0} đi
-给<ne|pn:1-4>的朋友打了个电话 = gọi điện thoại cho bạn của {0}
-能给<ne|pn:1-4>生宝宝 = có thể sinh con cho {0}
-自己和<ne|pn:1-4>之间的关系 = quan hệ giữa mình và {0}
-自己和<ne|pn:1-4>承诺的时间了 = thời gian mình cam kết với {0}
-被<ne|pn:1-4>抓到的人 = người bị {0} bắt được
-要比<ne|pn:1-4>想象中的高明 = cao minh hơn trong tưởng tượng của {0}
-要给<ne|pn:1-4>生孩子 = sinh con cho {0}
-跟<ne|pn:1-4>争吵 = cãi vã với {0}
-跟<ne|pn:1-4>原来的肤色不搭配 = không tiệp với màu da ban đầu của {0}
-跟<ne|pn:1-4>已经没有区别了 = đã không có khác biệt với {0}
-跟<ne|pn:1-4>打岔 = đánh trống lảng với {0}
-跟<ne|pn:1-4>斗嘴 = cãi vã với {0}
-跟<ne|pn:1-4>有什么合法的关系 = quan hệ hợp pháp gì với {0}
-跟<ne|pn:1-4>有半毛钱的关系 = có quan hệ nửa mao tiền với {0}
-还给了一个空号给<ne|pn:1-4> = còn cho {0} một số không
-这个才是我想寄给<ne|pn:1-4>的东西 = đây mới là vật ta muốn gởi cho {0}
-这些人看向<ne|pn:1-4>的目光 = ánh mắt của những người này nhìn {0}
-连个电话都没给<ne|pn:1-4>打 = ngay cả điện thoại cũng không gọi cho {0}
-连忙过去给<ne|pn:1-4>拿了瓶水来 = vội vàng đi lấy chai nước cho {0}
-那个杀了<ne|pn:1-4>手下的小子 = tên tiểu tử kia giết thủ hạ của {0}
-
-# Luật Nhân chọn lọc — chỉ giữ mẫu có neo dài, rõ ở hai phía
-一个字也没和<ne|pn:1-4>说过 = không nói một lời nào với {0}
-一把将人从<ne|pn:1-4>身上掀开 = nhấc bổng hắn ra khỏi người {0}
-不免得对<ne|pn:1-4>十分同情 = không khỏi hết sức đồng tình với {0}
-不知道是不是<ne|pn:1-4>的原因 = không biết có phải là do {0} hay không
-也很开心能够和<ne|pn:1-4>在一起 = cũng rất vui vì có thể ở bên {0}
-也是<ne|pn:1-4>最担心的一点 = cũng là điều {0} lo lắng nhất
-也没有真的去生<ne|pn:1-4>的气 = cũng không thật sự tức giận {0}
-事情果然如<ne|pn:1-4>所讲的那样 = mọi việc quả nhiên đúng như lời {0} nói
-他还是把希望寄托在了坐在最外侧的<ne|pn:1-4>身上 = hắn vẫn gửi gắm hy vọng vào {0}, người ngồi ngoài cùng
-伸手抓住了<ne|pn:1-4>的手腕 = đưa tay nắm lấy cổ tay của {0}
-但是<ne|pn:1-4>要是输得特别惨 = nhưng nếu {0} thua quá thảm
-再过几天就是<ne|pn:1-4>的日子 = vài ngày nữa sẽ là ngày của {0}
-名分上到底不如<ne|pn:1-4>来的名正言顺 = xét về danh phận vẫn không danh chính ngôn thuận bằng {0}
-完全把<ne|pn:1-4>的问题还了回去 = hoàn toàn trả lại vấn đề cho {0}
-害怕的抱住<ne|pn:1-4>的手臂 = sợ hãi ôm lấy cánh tay của {0}
-已经让<ne|pn:1-4>好几天失眠了 = đã khiến {0} mất ngủ nhiều ngày
-我的确是要和<ne|pn:1-4>结婚 = ta thực sự muốn kết hôn với {0}
-手搭在<ne|pn:1-4>衣服领口处 = tay đặt lên cổ áo của {0}
-手赶紧搂住了<ne|pn:1-4>的脖子 = tay vội vàng ôm lấy cổ của {0}
-把主意打在了<ne|pn:1-4>的身上 = có ý đồ với {0}
-望着<ne|pn:1-4>漫不经心实则暗藏紧张的眼神 = nhìn ánh mắt tưởng như thản nhiên nhưng ẩn chứa căng thẳng của {0}
-正在<ne|pn:1-4>支支吾吾不知如何解释 = đúng lúc {0} đang ấp úng không biết giải thích thế nào
-漫不经意瞟了<ne|pn:1-4>一眼 = lơ đãng liếc nhìn {0} một cái
-直把<ne|pn:1-4>盯到有些心慌 = nhìn chằm chằm khiến {0} có phần hoảng hốt
-直把<ne|pn:1-4>盯得后背发凉 = nhìn chằm chằm khiến {0} lạnh cả sống lưng
-看到<ne|pn:1-4>不想说这件事 = thấy {0} không muốn nói chuyện này
-看到<ne|pn:1-4>那么冷静的样子 = thấy dáng vẻ bình tĩnh như vậy của {0}
-表现得对<ne|pn:1-4>那样热烈 = tỏ ra nhiệt tình với {0} như vậy
-觉得留在<ne|pn:1-4>的身边安心一点 = cảm thấy ở bên cạnh {0} sẽ an tâm hơn
-跟着在<ne|pn:1-4>身旁坐下来 = cũng ngồi xuống bên cạnh {0}
-还有躲在暗中的人想对<ne|pn:1-4>下手 = còn có kẻ ẩn trong bóng tối muốn ra tay với {0}
-都会报应到<ne|pn:1-4>身上去 = tất cả đều sẽ báo ứng lên người {0}
-顿时狠狠的给了<ne|pn:1-4>肩膀一拳 = lập tức đấm mạnh vào vai {0}
-一边跟<ne|pn:1-4>说着自己的想法 = vừa nói suy nghĩ của mình với {0}
-说对<ne|pn:1-4>一点怨恨没有 = nói rằng không hề có chút oán hận nào với {0}
-那就给<ne|pn:1-4>全力进行治疗 = vậy toàn lực tiến hành chữa trị cho {0}
-都要比<ne|pn:1-4>住的地方好 = chỗ ở cũng tốt hơn {0}
