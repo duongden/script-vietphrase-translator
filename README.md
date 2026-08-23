@@ -4,8 +4,8 @@ Công cụ dịch nội dung tiếng Trung trên trang web sang tiếng Việt b
 
 Có hai phiên bản:
 
-- **Chrome Extension 2.2.0 Rule Engine**: bản build đã obfuscate cho Chrome và Firefox.
-- **Userscript 2.3.0 Rule Engine**: cài qua Tampermonkey hoặc Violentmonkey.
+- **Chrome Extension 2.2.3 Rule Engine**: bản build đã obfuscate cho Chrome và Firefox.
+- **Userscript 2.3.1 Rule Engine**: cài qua Tampermonkey hoặc Violentmonkey.
 
 > Không nên bật Extension và Userscript cùng lúc vì trang web có thể bị dịch hai lần.
 
@@ -14,10 +14,10 @@ Có hai phiên bản:
 1. Giải nén file:
 
    ```text
-   vietphrase-ext-v2.2.0.zip
+   vietphrase-ext-v2.2.3.zip
    ```
 
-   Với Firefox, sử dụng `vietphrase-ext-firefox-v2.2.0.zip`.
+   Với Firefox, sử dụng `vietphrase-ext-firefox-v2.2.3.zip`.
 
 2. Mở Chrome và truy cập:
 
@@ -157,8 +157,8 @@ Bộ từ điển Vietphrase có thể rất lớn nên lần tải đầu tiên
 
 ## Phiên bản
 
-- Chrome Extension Rule Engine: `2.2.0`
-- Userscript Rule Engine: `2.3.0`
+- Chrome Extension Rule Engine: `2.2.3`
+- Userscript Rule Engine: `2.3.1`
 
 ## License
 
